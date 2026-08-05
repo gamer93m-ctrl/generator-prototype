@@ -1,0 +1,1182 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Генератор — прототип</title>
+<style>
+  /* ═══ токены из макета (get_variable_defs) ═══ */
+  :root{
+    --tui-text-action:#428bf9;
+    --tui-status-info:#428bf9;
+    --cell-bg:rgba(255,255,255,.1);        /* tui-background-neutral-1-on-dark */
+    --cell-radius:6px;
+    /* размер ячейки считается в fit() под доступную высоту, 56 — потолок из макета */
+    --cell-size:56px;
+    --cell-gap:2px;
+    --block-w:288px;                        /* 5×56 + 4×2 */
+    --block-gap:20px;
+    --grid-left:36px;
+    --stage-pad:16px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+  html,body{margin:0;padding:0;height:100%;background:#000;overflow:hidden;overscroll-behavior:none}
+
+  /* ═══ Экран живёт в координатах макета: ширина всегда ровно 360,
+     высота — сколько дал экран. Горизонтальные размеры из Figma
+     сохраняются точно, вертикальные зазоры тянутся. ═══ */
+  #phone{
+    position:absolute;left:0;top:0;width:360px;background:#000;overflow:hidden;
+    transform-origin:0 0;
+    display:flex;flex-direction:column;
+    font:400 17px/1 -apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",system-ui,sans-serif;
+    color:#fff;
+  }
+
+  /* ─── status bar (44) ─── */
+  .statusbar{position:relative;flex:0 0 44px}
+  #phone.compact .statusbar,
+  #phone.compact #homebar{display:none}   /* мало высоты — убираем бутафорию */
+  /* и поджимаем всё вокруг сетки: чем меньше уйдёт на обвязку,
+     тем крупнее ячейки и тем полнее сетка занимает ширину */
+  #phone.compact .titlewrap{padding:2px 16px 10px}
+  #phone.compact #title{font-size:22px;line-height:26px}
+  #phone.compact #desc{margin-top:8px;font-size:15px}
+  #phone.compact .controls{flex-basis:44px;margin-top:10px}
+  #phone.compact #pager{top:12px}
+  #phone.compact #collect{width:44px;height:44px;font-size:26px}
+  #phone.compact #tray{padding-top:14px;padding-bottom:14px}
+  #phone.compact .seed{width:64px;height:64px}
+  #phone.compact .seed img{width:58px;height:58px}
+  #time{position:absolute;left:34px;top:12px;font-size:15px;font-weight:600;letter-spacing:-.2px}
+  #sysicons{position:absolute;right:14px;top:15px;font-size:11px;letter-spacing:1px;opacity:.95}
+
+  /* ─── app bar (44) ─── */
+  .appbar{position:relative;flex:0 0 44px}
+  #back{
+    position:absolute;left:8px;top:10px;width:12px;height:24px;border:0;background:none;padding:0;
+    cursor:pointer;color:var(--tui-text-action);font-size:26px;line-height:24px;font-weight:300;
+  }
+
+  /* ─── бейджи: widget @140,44 · 220×44, px16 py8 gap12 ─── */
+  #widget{
+    position:absolute;right:16px;top:8px;height:28px;
+    display:flex;gap:12px;align-items:center;
+  }
+  .badge{
+    height:28px;min-width:28px;border-radius:100px;background:#1c1c1e;
+    display:flex;align-items:center;padding:0 6px;gap:2px;
+    font-size:13px;font-weight:600;letter-spacing:-.08px;white-space:nowrap;
+  }
+  .badge i{width:16px;height:16px;border-radius:50%;display:block;flex:0 0 auto}
+  .i-gem{background:radial-gradient(circle at 34% 28%,#7ee0ff,#1a6ee8 72%)}
+  .i-coin{background:radial-gradient(circle at 34% 28%,#ffe066,#f0940a 72%)}
+  .badge span{padding:0 4px}
+  #ring{position:relative;width:28px;height:28px;border-radius:100px;background:#1c1c1e;display:grid;place-items:center}
+  #ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+  #ring b{font-size:13px;font-weight:600;letter-spacing:-.08px}
+
+  /* ─── заголовок ─── */
+  .titlewrap{flex:0 0 auto;padding:4px 16px 26px}
+  #title{
+    font-family:-apple-system,"SF Pro Display",system-ui,sans-serif;
+    font-size:30px;font-weight:700;letter-spacing:.36px;line-height:36px;
+  }
+  #desc{margin-top:18px;font-size:17px;letter-spacing:-.41px;color:#8e8e93}
+
+  /* ─── сетка блоков ─── */
+  /* сетка забирает свободную высоту, минимальные поля сверху и снизу гарантированы */
+  #stage{
+    flex:1 1 auto;position:relative;display:flex;align-items:center;
+    min-height:0;padding:var(--stage-pad) 0;
+  }
+  #scroller{
+    width:100%;height:var(--block-w);
+    display:flex;gap:var(--block-gap);padding:0 var(--grid-left);
+    overflow-x:auto;scroll-snap-type:x mandatory;
+    scrollbar-width:none;overscroll-behavior-x:contain;
+  }
+  #scroller::-webkit-scrollbar{display:none}
+  #scroller.one{overflow-x:hidden}
+  #scroller.nosnap{scroll-snap-type:none}   /* на время быстрой прокрутки */
+  .block{
+    /* якорная позиция: блок всегда встаёт по центру экрана */
+    flex:0 0 var(--block-w);scroll-snap-align:center;
+    display:grid;grid-template-columns:repeat(5,var(--cell-size));
+    grid-auto-rows:var(--cell-size);gap:var(--cell-gap);
+  }
+  .cell{
+    background:var(--cell-bg);border-radius:var(--cell-radius);
+    position:relative;overflow:hidden;
+    display:grid;place-items:center;
+  }
+  /* выбранная ячейка — как resources23 в макете */
+  .cell.sel::before{
+    content:"";position:absolute;inset:0;background:rgba(66,139,249,.2);z-index:2;
+  }
+  /* в версии C выбор множественный, поэтому ставим галочку как в фотоплёнке */
+  #phone[data-ver="select"] .cell.sel::after{
+    content:"✓";position:absolute;right:3px;top:3px;width:16px;height:16px;
+    border-radius:50%;background:var(--tui-text-action);color:#fff;
+    font-size:10px;font-weight:700;line-height:16px;text-align:center;z-index:3;
+  }
+
+  /* ─── панель действий над выделением ─── */
+  #actionbar{
+    flex:0 0 auto;display:flex;align-items:center;gap:8px;
+    margin:0 16px;padding:8px 8px 8px 14px;
+    background:rgba(255,255,255,.1);border-radius:14px;
+  }
+  #actionbar[hidden]{display:none}
+  #actionbar .n{flex:1;font-size:13px;font-weight:600;letter-spacing:-.08px}
+  #actionbar .n small{display:block;font-weight:400;color:#8e8e93;font-size:11px;margin-top:2px}
+  #actionbar button{
+    border:0;border-radius:9px;padding:9px 12px;font:600 13px/1 inherit;cursor:pointer;
+  }
+  #actionbar .go{background:var(--tui-text-action);color:#fff}
+  #actionbar .go[disabled]{background:rgba(255,255,255,.12);color:#636366;cursor:default}
+  #actionbar .clr{background:none;color:#8e8e93;padding:9px 4px}
+  /* доля от ячейки, а не фикс — ячейка меняет размер под экран */
+  .cell img{width:71%;height:71%;object-fit:contain;pointer-events:none;position:relative}
+  .cell.growing img{opacity:.4}
+  .cell .arc{position:absolute;inset:0;transform:rotate(-90deg);pointer-events:none}
+
+  /* фидбек при проведении инструментом/ресурсом: ячейка чуть поджимается */
+  .cell{transition:transform .16s cubic-bezier(.34,1.56,.64,1)}
+  .cell.hov{transform:scale(.88)}
+
+  /* края (33px, узлы 2:14144 / 2:14145): прозрачные тап-зоны прокрутки.
+     Ничего не затемняют — соседний блок должен быть видно. */
+  .fade{
+    position:absolute;top:0;bottom:0;width:var(--grid-left);z-index:3;
+    border:0;padding:0;background:none;cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .fade.l{left:0}
+  .fade.r{right:0}
+  .fade:active::after{content:"";position:absolute;inset:0;background:rgba(255,255,255,.05)}
+  .fade[disabled]{cursor:default;pointer-events:none}
+  /* зона «взведена»: ресурс поднесён к краю, сейчас пойдёт прокрутка */
+  .fade.armed::after{
+    content:"";position:absolute;inset:0;
+    background:linear-gradient(var(--edge-dir),rgba(255,214,10,.32),transparent);
+    animation:armed .7s ease-in-out infinite;
+  }
+  .fade.l.armed::after{--edge-dir:90deg}
+  .fade.r.armed::after{--edge-dir:270deg}
+  @keyframes armed{0%,100%{opacity:.45}50%{opacity:1}}
+  #phone.dragging .fade{pointer-events:none}   /* не мешать перетаскиванию */
+
+  /* ─── пейджер @133,536 · 95×20 ─── */
+  .controls{position:relative;flex:0 0 52px;margin-top:24px}
+  #pager{
+    position:absolute;left:133px;top:16px;width:95px;height:20px;border-radius:10px;
+    background:var(--cell-bg);display:flex;align-items:center;justify-content:center;gap:6px;
+    touch-action:none;cursor:grab;
+    transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s;
+  }
+  #pager.hide{display:none}
+  /* жест точной прокрутки: долгий тап — pager подрастает */
+  #pager.zoom{transform:scale(1.25);box-shadow:0 0 0 1px rgba(255,255,255,.35) inset;cursor:grabbing}
+  #pager i{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.22);transition:background .15s}
+  #pager i.on{background:var(--tui-status-info)}
+
+  /* ─── инструмент сбора @272,528 · 52×52 ─── */
+  #collect{
+    position:absolute;left:272px;top:0;width:52px;height:52px;border-radius:50%;
+    background:var(--cell-bg);border:0;padding:0;display:grid;place-items:center;
+    font-size:32px;line-height:1;cursor:grab;touch-action:none;
+  }
+  #collect.lifted{opacity:.35}
+  #collect[hidden]{display:none}   /* иначе display:grid выше перебивает [hidden] */
+
+  /* ─── лоток: frame @0,594 · 360×152, items 80 @y24, x40 шаг 92 ─── */
+  #tray{
+    flex:0 0 auto;width:360px;
+    display:flex;gap:12px;padding:24px 40px;
+    overflow-x:auto;scrollbar-width:none;
+  }
+  #tray::-webkit-scrollbar{display:none}
+  .seed{
+    flex:0 0 auto;width:80px;height:80px;border-radius:12px;
+    display:grid;place-items:center;cursor:grab;touch-action:none;
+    border:1px solid transparent;
+  }
+  .seed.sel{border:1px dashed rgba(255,255,255,.32)}
+  .seed.lifted{opacity:.35}
+  .seed img{width:72px;height:72px;object-fit:contain;pointer-events:none}
+
+  /* ─── home bar ─── */
+  #homebar{flex:0 0 34px;position:relative}
+  #homebar::after{content:"";position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:133px;height:5px;border-radius:100px;background:#fff}
+
+  /* ─── призрак перетаскивания ─── */
+  /* остаётся в потоке, но не виден и не ловит касания */
+  #ghost{position:fixed;left:0;top:0;width:64px;height:64px;pointer-events:none;z-index:90;display:none}
+  #ghost img{width:100%;height:100%;object-fit:contain;display:block}
+  #ghost span{display:block;width:100%;height:100%;font-size:44px;line-height:64px;text-align:center}
+  #ghost img[hidden],#ghost span[hidden]{display:none}
+
+  /* ─── тултип ─── */
+  #tip{
+    position:absolute;z-index:60;display:none;background:#f2f2f7;color:#000;
+    border-radius:12px;padding:9px 12px;font-size:13px;line-height:1.35;font-weight:500;
+    box-shadow:0 8px 24px rgba(0,0,0,.5);max-width:170px;
+  }
+  #tip::after{content:"";position:absolute;bottom:-5px;left:calc(50% - 6px);width:12px;height:12px;background:#f2f2f7;transform:rotate(45deg);border-radius:2px}
+  #tip button{display:block;margin-top:8px;width:100%;border:0;border-radius:8px;background:var(--tui-text-action);color:#fff;font:600 13px/1 inherit;padding:8px;cursor:pointer}
+
+  /* ─── скелетон ─── */
+  #skeleton{position:absolute;inset:0;background:#000;z-index:70;display:none}
+  #skeleton.on{display:block}
+  .sk{background:rgba(255,255,255,.06);border-radius:6px;position:relative;overflow:hidden}
+  .sk::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.05),transparent);animation:sh 1.1s infinite}
+  @keyframes sh{100%{transform:translateX(100%)}}
+
+  /* ─── вход в служебные настройки: в шапке, в свободной зоне app-bar ─── */
+  #devbtn{
+    position:absolute;left:40px;top:8px;height:28px;z-index:40;
+    display:flex;align-items:center;gap:6px;padding:0 12px;
+    border:1px dashed rgba(255,255,255,.28);border-radius:100px;
+    background:rgba(255,255,255,.04);color:#8e8e93;
+    font:600 12px/1 inherit;letter-spacing:-.1px;cursor:pointer;
+  }
+  #devbtn:hover{color:#c7c7cc}
+  #devbtn b{color:var(--tui-text-action)}
+
+  /* ─── страница настроек прототипа ─── */
+  #settings{
+    position:absolute;inset:0;z-index:100;background:#000;
+    display:flex;flex-direction:column;overflow-y:auto;
+  }
+  #settings[hidden]{display:none}
+  #settings .head{
+    flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
+    padding:16px 16px 8px;
+  }
+  #settings h2{margin:0;font-size:24px;font-weight:700;letter-spacing:.2px}
+  #settings .close{
+    border:0;background:rgba(255,255,255,.1);color:#fff;width:32px;height:32px;
+    border-radius:50%;font-size:17px;line-height:1;cursor:pointer;
+  }
+  #settings .body{padding:8px 16px 24px;display:flex;flex-direction:column;gap:22px}
+  .row .label{font-size:13px;font-weight:600;color:#8e8e93;margin-bottom:8px;letter-spacing:-.08px}
+  .row .hint{font-size:12px;line-height:1.4;color:#636366;margin-top:8px}
+  .seg{display:flex;background:rgba(255,255,255,.1);border-radius:10px;padding:3px;gap:3px}
+  .seg button{
+    flex:1;border:0;background:none;color:#c7c7cc;border-radius:8px;
+    padding:9px 6px;font:600 13px/1.2 inherit;cursor:pointer;letter-spacing:-.08px;
+  }
+  .seg button.on{background:var(--tui-text-action);color:#fff}
+  .danger{
+    width:100%;border:1px solid rgba(255,255,255,.18);background:none;color:#ff453a;
+    border-radius:10px;padding:12px;font:600 14px/1 inherit;cursor:pointer;
+  }
+  #settings .note{
+    font-size:12px;line-height:1.45;color:#636366;
+    border-top:1px solid rgba(255,255,255,.1);padding-top:14px;
+  }
+</style>
+</head>
+<body>
+
+<div id="phone">
+  <div class="statusbar">
+    <div id="time">9:41</div>
+    <div id="sysicons">▪▪▪ ⌁ ▰</div>
+  </div>
+
+  <div class="appbar">
+  <button id="back" aria-label="Назад">‹</button>
+
+  <button id="devbtn" title="Настройки прототипа">версия <b id="devver">A</b></button>
+
+  <div id="widget">
+    <div class="badge"><i class="i-gem"></i><span>500</span></div>
+    <div class="badge"><i class="i-coin"></i><span>5 000</span></div>
+    <div id="ring">
+      <svg viewBox="0 0 28 28"><circle cx="14" cy="14" r="12.5" fill="none"
+        stroke="var(--tui-status-info)" stroke-width="2" stroke-linecap="round"
+        stroke-dasharray="78.5" stroke-dashoffset="24"/></svg><b>10</b>
+    </div>
+  </div>
+  </div>
+
+  <div class="titlewrap">
+    <div id="title">Генератор</div>
+    <div id="desc">Доступно <span id="free">0</span> ячеек</div>
+  </div>
+
+  <div id="stage">
+    <div id="scroller"></div>
+    <button class="fade l" aria-label="Предыдущий блок"></button>
+    <button class="fade r" aria-label="Следующий блок"></button>
+  </div>
+
+  <div class="controls">
+    <div id="pager"></div>
+    <button id="collect" title="Сбор: провести по готовым ячейкам">👋</button>
+  </div>
+
+  <div id="actionbar" hidden>
+    <div class="n"><span id="selN">Выбрано 0</span><small id="selHint"></small></div>
+    <button class="go" id="doCollect">Собрать</button>
+    <button class="clr" id="doClear">Снять</button>
+  </div>
+
+  <div id="tray"></div>
+  <div id="homebar"></div>
+
+  <div id="tip"></div>
+  <div id="skeleton"></div>
+
+  <div id="settings" hidden>
+    <div class="head">
+      <h2>Настройки прототипа</h2>
+      <button class="close" aria-label="Закрыть">✕</button>
+    </div>
+    <div class="body">
+
+      <div class="row">
+        <div class="label">ВЕРСИЯ СБОРА</div>
+        <div class="seg">
+          <button data-set="collect:tool">A · ручкой</button>
+          <button data-set="collect:direct">B · напрямую</button>
+          <button data-set="collect:select">C · выделением</button>
+        </div>
+        <div class="hint" id="collectHint"></div>
+      </div>
+
+
+      <div class="row" id="directRow" hidden>
+        <div class="label">КАК ОТЛИЧАТЬ СБОР ОТ ПРОКРУТКИ</div>
+        <div class="seg">
+          <button data-set="direct:free">Водишь пальцем</button>
+          <button data-set="direct:start">С готовой</button>
+          <button data-set="direct:hold">Удержание</button>
+        </div>
+        <div class="hint" id="directHint"></div>
+      </div>
+
+      <div class="row">
+        <div class="label">СКОЛЬКО БЛОКОВ</div>
+        <div class="seg">
+          <button data-mode="single">1 блок · 25</button>
+          <button data-mode="overflow">4 блока · 100</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="danger" id="reset">Очистить все грядки</button>
+      </div>
+
+      <div class="note">
+        Служебный экран для тестов. Переключение применяется сразу —
+        закрой настройки и пробуй, грядки не сбрасываются.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="ghost"><img alt=""><span></span></div>
+
+
+<script>
+'use strict';
+
+/* ═══════════ КОНФИГ ═══════════ */
+
+const RESOURCE_TYPES = [
+  { id:'strawberry', name:'Клубника', growMs:10*1000, image:'img.png' },
+  { id:'banana',     name:'Банан',    growMs:20*1000, image:'imgb.png' },
+  { id:'coffee',     name:'Кофе',     growMs:40*1000, image:'imgcoffe.png' },
+];
+
+const CELLS_PER_BLOCK = 25;
+const MODES = { single:1, overflow:4 };
+const SKELETON_MS = 600;
+const DOUBLE_TAP_MS = 300;
+const CIRC = 2 * Math.PI * 24;           // дуга прогресса в ячейке 56px
+
+const byId = id => RESOURCE_TYPES.find(t => t.id === id);
+
+/* ═══════════ СОСТОЯНИЕ ═══════════ */
+
+const STORE = 'generator-proto-v2';
+let state = load() || fresh('single');
+
+function fresh(mode){
+  return { mode, cells: Array.from({length: MODES[mode]*CELLS_PER_BLOCK}, () => ({state:'empty'})) };
+}
+function load(){
+  try{
+    const r = JSON.parse(localStorage.getItem(STORE));
+    if(!r || !MODES[r.mode] || !Array.isArray(r.cells)) return null;
+    if(r.cells.length !== MODES[r.mode]*CELLS_PER_BLOCK) return null;
+    const now = Date.now();
+    r.cells.forEach(c => { if(c.state==='growing' && c.endsAt<=now) c.state='ready'; });
+    return r;
+  }catch{ return null; }
+}
+const save = () => localStorage.setItem(STORE, JSON.stringify(state));
+
+/* ═══════════ DOM ═══════════ */
+
+const $ = s => document.querySelector(s);
+const phone = $('#phone'), scroller = $('#scroller'), pager = $('#pager');
+const tray = $('#tray'), tip = $('#tip'), ghost = $('#ghost');
+const ghostImg = ghost.querySelector('img'), ghostEmoji = ghost.querySelector('span');
+const skeleton = $('#skeleton');
+const freeEl = $('#free'), collectTool = $('#collect');
+const cellEls = [];
+
+/* Макет свёрстан в координатах 360×780 и целиком масштабируется под экран:
+   на телефоне растягивается во весь экран, на десктопе ужимается. */
+const DESIGN_W = 360;
+/* Полная обвязка (статус-бар, app bar, заголовок, контролы, лоток, home bar)
+   съедает 430 единиц. Сетке нужно 288 плюс поля 32 — значит полный вариант
+   имеет смысл только от 750. Ниже переключаемся на компактный, иначе на
+   границе ячейки становились мельче, чем в компактном режиме. */
+const COMPACT_H = 750;
+const MIN_H = 560;       // минимальная высота в единицах макета, ниже не ужимаемся
+const CELL_MAX = 56;     // размер из макета — потолок, а не константа
+const CELL_MIN = 34;
+
+const stage = $('#stage');
+const root = document.documentElement;
+
+function fit(){
+  const vv = window.visualViewport;
+  const w = vv ? vv.width  : innerWidth;
+  const h = vv ? vv.height : innerHeight;
+
+  // Тянемся по ширине, но не настолько, чтобы высоты осталось меньше MIN_H:
+  // иначе в широком окне десктопа «телефон» раздувался бы на весь экран.
+  const s = Math.min(w / DESIGN_W, h / MIN_H);
+  const layoutH = h / s;                    // высота экрана в единицах макета
+
+  phone.classList.toggle('compact', layoutH < COMPACT_H);
+  phone.style.height = layoutH + 'px';
+  phone.style.left = Math.round((w - DESIGN_W * s) / 2) + 'px';
+  phone.style.transform = `scale(${s})`;
+
+  sizeGrid();
+}
+
+/* Ячейка подгоняется под то, что осталось между шапкой и лотком.
+   Сетка всегда квадратная 5×5 и целиком помещается — без обрезки и без
+   упирания в подзаголовок. Поля --stage-pad уже вычтены самим stage. */
+function sizeGrid(){
+  const avail = stage.clientHeight;          // padding уже учтён в clientHeight
+  const pad = parseFloat(getComputedStyle(stage).paddingTop) * 2;
+  const usable = avail - pad;
+
+  const gap = 2;
+  let cell = Math.floor((usable - gap * 4) / 5);
+  cell = Math.max(CELL_MIN, Math.min(CELL_MAX, cell));
+
+  const blockW = cell * 5 + gap * 4;
+  root.style.setProperty('--cell-size', cell + 'px');
+  root.style.setProperty('--block-w', blockW + 'px');
+  root.style.setProperty('--grid-left', Math.round((DESIGN_W - blockW) / 2) + 'px');
+}
+addEventListener('resize', fit);
+addEventListener('orientationchange', fit);
+window.visualViewport?.addEventListener('resize', fit);
+
+/* ─── сетка ─── */
+
+function buildGrid(){
+  scroller.innerHTML = '';
+  cellEls.length = 0;
+  const blocks = MODES[state.mode];
+  scroller.classList.toggle('one', blocks === 1);
+
+  for(let b = 0; b < blocks; b++){
+    const block = document.createElement('div');
+    block.className = 'block';
+    for(let i = 0; i < CELLS_PER_BLOCK; i++){
+      const idx = b*CELLS_PER_BLOCK + i;
+      const el = document.createElement('div');
+      el.className = 'cell';
+      el.dataset.idx = idx;
+      el.innerHTML =
+        `<svg class="arc" viewBox="0 0 56 56"><circle cx="28" cy="28" r="24" fill="none"
+          stroke="#fff" stroke-width="2" stroke-linecap="round"
+          stroke-dasharray="${CIRC}" stroke-dashoffset="${CIRC}"/></svg><img alt="" hidden>`;
+      block.appendChild(el);
+      cellEls[idx] = el;
+    }
+    scroller.appendChild(block);
+  }
+
+  pager.innerHTML = '';
+  pager.classList.toggle('hide', blocks === 1);
+  for(let b = 0; b < blocks; b++) pager.appendChild(document.createElement('i'));
+  updatePager();
+  paintAll();
+}
+
+function paintCell(idx){
+  const c = state.cells[idx], el = cellEls[idx];
+  if(!el) return;
+  const img = el.querySelector('img'), arc = el.querySelector('.arc circle');
+
+  el.classList.toggle('growing', c.state === 'growing');
+  el.classList.toggle('ready',   c.state === 'ready');
+
+  if(c.state === 'empty'){
+    img.hidden = true;
+    arc.style.strokeDashoffset = CIRC;
+    return;
+  }
+  const t = byId(c.typeId);
+  if(!img.src.endsWith(t.image)) img.src = t.image;
+  img.hidden = false;
+  arc.style.strokeDashoffset = c.state === 'growing'
+    ? CIRC * ((c.endsAt - Date.now()) / t.growMs)
+    : CIRC;
+}
+
+const countFree = () => { freeEl.textContent = state.cells.filter(c => c.state==='empty').length; };
+function paintAll(){ state.cells.forEach((_,i) => paintCell(i)); countFree(); }
+
+/* ─── лоток ─── */
+
+let selectedType = RESOURCE_TYPES[0].id;
+
+function buildTray(){
+  tray.innerHTML = '';
+  RESOURCE_TYPES.forEach(t => {
+    const el = document.createElement('div');
+    el.className = 'seed' + (t.id === selectedType ? ' sel' : '');
+    el.dataset.type = t.id;
+    el.title = `${t.name} · ${t.growMs/1000} сек`;
+    el.innerHTML = `<img src="${t.image}" alt="${t.name}">`;
+    tray.appendChild(el);
+  });
+}
+
+/* ═══════════ ПЕРЕТАСКИВАНИЕ ═══════════
+   Два режима, оба массовые: ведёшь пальцем — обрабатываются все ячейки под ним.
+   'seed'    — сажает во все пустые
+   'collect' — собирает со всех готовых                                        */
+
+let drag = null;      // { kind, typeId, srcEl }
+let selCell = null;   // предварительно выбранная ячейка (см. примечания в макете)
+let hov = null;       // ячейка под пальцем — для фидбека поджатием
+
+/* Выбор ячейки тапом. Пока выбранная ячейка не обработана и не отжата —
+   остальные ячейки на перетаскивание не реагируют. */
+function selectCell(idx){
+  if(selCell !== null) cellEls[selCell]?.classList.remove('sel');
+  selCell = (selCell === idx) ? null : idx;          // повторный тап — «отжата»
+  if(selCell !== null) cellEls[selCell].classList.add('sel');
+}
+function clearSel(){
+  if(selCell !== null) cellEls[selCell]?.classList.remove('sel');
+  selCell = null;
+}
+
+function startDrag(kind, srcEl, typeId, e){
+  hideTip();
+  drag = { kind, typeId, srcEl };
+  phone.classList.add('dragging');
+  srcEl.classList.add('lifted');
+  srcEl.setPointerCapture?.(e.pointerId);
+
+  if(kind === 'seed'){
+    ghostEmoji.hidden = true;
+    ghostImg.hidden = false;
+    ghostImg.src = byId(typeId).image;
+  } else {
+    ghostImg.hidden = true;
+    ghostEmoji.hidden = false;
+    ghostEmoji.textContent = '👋';
+  }
+  ghost.style.display = 'block';
+  moveGhost(e.clientX, e.clientY);
+  apply(e.clientX, e.clientY);
+}
+
+tray.addEventListener('pointerdown', e => {
+  const seed = e.target.closest('.seed');
+  if(!seed) return;
+  e.preventDefault();
+  selectedType = seed.dataset.type;
+  tray.querySelectorAll('.seed').forEach(s => s.classList.toggle('sel', s === seed));
+  // версия C с выделением: ресурс не тащат, по нему жмут — засеется всё выбранное
+  if(cfg.collect === 'select' && picked.size) return;
+  startDrag('seed', seed, selectedType, e);
+});
+
+tray.addEventListener('click', e => {
+  const seed = e.target.closest('.seed');
+  if(!seed || cfg.collect !== 'select' || !picked.size) return;
+  seedPicked(seed.dataset.type);
+});
+
+collectTool.addEventListener('pointerdown', e => {
+  if(cfg.collect === 'direct') return;      // в версии B ручка не заметает
+  e.preventDefault();
+  startDrag('collect', collectTool, null, e);
+});
+
+
+document.addEventListener('pointermove', e => {
+  if(!drag) return;
+  e.preventDefault();
+  moveGhost(e.clientX, e.clientY);
+  apply(e.clientX, e.clientY);
+
+  // держим ресурс у края — блоки листаются, не отрывая палец
+  const pr = phone.getBoundingClientRect();
+  edgeScroll((e.clientX - pr.left) / (pr.width / 360));
+}, {passive:false});
+
+/* ═══ автопрокрутка у края во время перетаскивания ═══
+   Подвёл ресурс/инструмент к краевой зоне и держишь — через 400 мс
+   листается блок, дальше каждые 700 мс, пока не увёл палец.        */
+
+const EDGE_DELAY = 400, EDGE_REPEAT = 700;
+let edgeTimer = null, edgeDir = 0;
+
+function edgeScroll(x){
+  // работает и при перетаскивании ресурса, и при заметании сбора
+  const active = drag || (dc && dc.sweeping);
+  if(!active || MODES[state.mode] === 1) return stopEdgeScroll();
+
+  let dir = x <= 36 ? -1 : x >= 324 ? 1 : 0;
+
+  // листать некуда — зону не взводим, иначе мигает впустую на крайних блоках
+  if(dir){
+    const next = anchorBlock + dir;
+    if(next < 0 || next > MODES[state.mode] - 1) dir = 0;
+  }
+
+  if(dir === edgeDir) return;                 // направление не изменилось
+  stopEdgeScroll();
+  edgeDir = dir;
+  if(!dir) return;
+
+  const zone = $(dir < 0 ? '.fade.l' : '.fade.r');
+  zone.classList.add('armed');
+  const step = () => {
+    const next = anchorBlock + edgeDir;
+    if(next < 0 || next > MODES[state.mode] - 1) return stopEdgeScroll();
+    goToBlock(next);
+    // на крайнем блоке дальше не тикаем — подсветка гаснет сама
+    if(next === 0 || next === MODES[state.mode] - 1) return stopEdgeScroll();
+    edgeTimer = setTimeout(step, EDGE_REPEAT);
+  };
+  edgeTimer = setTimeout(step, EDGE_DELAY);
+}
+
+function stopEdgeScroll(){
+  clearTimeout(edgeTimer);
+  edgeTimer = null; edgeDir = 0;
+  document.querySelectorAll('.fade').forEach(f => f.classList.remove('armed'));
+}
+
+function endDrag(){
+  if(!drag) return;
+  ghost.style.display = 'none';
+  phone.classList.remove('dragging');
+  drag.srcEl.classList.remove('lifted');
+  if(hov !== null){ cellEls[hov]?.classList.remove('hov'); hov = null; }
+  drag = null;
+  stopEdgeScroll();
+  save();
+}
+/* Снимаем перетаскивание при любом завершении, не только по pointerup:
+   иначе оборванный жест навсегда оставлял краевые зоны отключёнными. */
+document.addEventListener('pointerup', endDrag);
+document.addEventListener('pointercancel', endDrag);
+addEventListener('blur', endDrag);
+
+function moveGhost(x, y){ ghost.style.transform = `translate(${x-32}px, ${y-32}px)`; }
+
+/* Ячейка под пальцем — и действие над ней. Правила из примечаний макета:
+   1. ресурс на пустую ячейку → запускается генерация;
+      инструмент сбора на готовую → производится сбор;
+   2. если ячейка была выбрана заранее — процесс идёт только с неё,
+      остальные не активируются, пока она не обработана или не отжата;
+   3. попадание на ячейку «в процессе» — ничего не происходит.        */
+function apply(x, y){
+  ghost.style.display = 'none';
+  const el = document.elementFromPoint(x, y);
+  ghost.style.display = 'block';
+  const cell = el && el.closest ? el.closest('.cell') : null;
+
+  // фидбек: поджимаем ячейку под пальцем
+  const over = cell ? +cell.dataset.idx : null;
+  if(over !== hov){
+    if(hov !== null) cellEls[hov]?.classList.remove('hov');
+    hov = over;
+    if(hov !== null) cellEls[hov].classList.add('hov');
+  }
+  if(!cell) return;
+
+  const idx = +cell.dataset.idx;
+
+  // правило 2: блокировка на выбранной ячейке
+  if(selCell !== null && idx !== selCell) return;
+
+  const c = state.cells[idx];
+
+  if(drag.kind === 'seed'){
+    if(c.state !== 'empty') return;                       // правило 3
+    const t = byId(drag.typeId);
+    state.cells[idx] = { state:'growing', typeId:drag.typeId, endsAt: Date.now() + t.growMs };
+  } else {
+    if(c.state !== 'ready') return;                       // правило 3
+    state.cells[idx] = { state:'empty' };
+  }
+
+  if(idx === selCell) clearSel();   // выбранная обработана — замок снят
+  paintCell(idx);
+  countFree();
+}
+
+/* ═══════════ СБОР ТАПОМ ═══════════ */
+
+let lastTap = {idx:-1, at:0};
+
+scroller.addEventListener('click', e => {
+  if(swallowClick){ swallowClick = false; return; }   // уже обработали этим же касанием
+  if(cfg.collect === 'select') return;                // в версии C выделением занимаются указатели
+  const cell = e.target.closest('.cell');
+  if(!cell) return;
+  const idx = +cell.dataset.idx, now = Date.now();
+
+  if(lastTap.idx === idx && now - lastTap.at < DOUBLE_TAP_MS){
+    lastTap = {idx:-1, at:0};
+    if(state.cells[idx].state === 'ready') return collect(idx);
+  }
+  lastTap = {idx, at:now};
+
+  selectCell(idx);   // тап выбирает ячейку / отжимает её
+  setTimeout(() => { if(lastTap.idx === idx) showTip(idx, cell); }, DOUBLE_TAP_MS);
+});
+
+function collect(idx){
+  state.cells[idx] = {state:'empty'};
+  if(idx === selCell) clearSel();
+  paintCell(idx); countFree(); hideTip(); save();
+}
+
+/* ═══════════ ТУЛТИП ═══════════ */
+
+function showTip(idx, cell){
+  const c = state.cells[idx];
+  if(c.state === 'empty') return hideTip();
+  const t = byId(c.typeId);
+
+  tip.innerHTML = c.state === 'growing'
+    ? `<b>${t.name}</b><br>осталось ${Math.max(0, Math.ceil((c.endsAt-Date.now())/1000))} сек`
+    : `<b>${t.name}</b><br>готово к сбору<button data-c="${idx}">Собрать</button>`;
+
+  tip.style.display = 'block';
+  const cr = cell.getBoundingClientRect(), pr = phone.getBoundingClientRect();
+  const sc = pr.width / 360;
+  let left = (cr.left - pr.left)/sc + cr.width/sc/2 - tip.offsetWidth/2;
+  tip.style.left = Math.max(8, Math.min(left, 360 - tip.offsetWidth - 8)) + 'px';
+  tip.style.top = ((cr.top - pr.top)/sc - tip.offsetHeight - 8) + 'px';
+  tip.dataset.idx = idx;
+}
+const hideTip = () => { tip.style.display='none'; tip.dataset.idx=''; };
+
+tip.addEventListener('click', e => {
+  const b = e.target.closest('[data-c]');
+  if(b) collect(+b.dataset.c);
+});
+document.addEventListener('pointerdown', e => {
+  if(!e.target.closest('#tip') && !e.target.closest('.cell')) hideTip();
+});
+let settleTimer = null;
+scroller.addEventListener('scroll', () => {
+  hideTip();
+  updatePager();
+  // прокрутка улеглась — подтягиваем якорь под факт (свайп, жест пейджера)
+  clearTimeout(settleTimer);
+  settleTimer = setTimeout(() => { anchorBlock = currentBlock(); }, 140);
+}, {passive:true});
+
+/* ═══════════ ТИК ═══════════ */
+
+setInterval(() => {
+  const now = Date.now();
+  let changed = false;
+  state.cells.forEach((c,i) => {
+    if(c.state !== 'growing') return;
+    if(c.endsAt <= now){ c.state = 'ready'; changed = true; }
+    paintCell(i);
+  });
+  if(tip.style.display === 'block' && tip.dataset.idx !== ''){
+    const i = +tip.dataset.idx;
+    if(state.cells[i].state !== 'empty') showTip(i, cellEls[i]);
+  }
+  if(changed){ countFree(); save(); }
+}, 100);
+
+/* ═══════════ ПРОКРУТКА ═══════════
+   Три жеста из макета, у всех якорная позиция — блок встаёт по центру экрана:
+   1. свайп по сетке (нативный скролл со снапом)
+   2. тап по краю экрана — на один блок влево/вправо
+   3. долгий тап на pager — он подрастает, дальше точная прокрутка пальцем  */
+
+const maxScroll = () => scroller.scrollWidth - scroller.clientWidth;
+const blockStep = () => {
+  const n = MODES[state.mode];
+  return n > 1 ? maxScroll() / (n - 1) : 0;
+};
+const currentBlock = () => {
+  const s = blockStep();
+  return s > 0 ? Math.round(scroller.scrollLeft / s) : 0;
+};
+
+/* Куда мы едем сейчас. Во время плавной прокрутки scrollLeft отстаёт,
+   поэтому решения о границах принимаем по якорю, а не по факту. */
+let anchorBlock = 0;
+
+function goToBlock(i){
+  const n = MODES[state.mode];
+  anchorBlock = Math.max(0, Math.min(n - 1, i));
+  scroller.scrollTo({ left: anchorBlock * blockStep(), behavior:'smooth' });
+}
+
+/* — жест 2: тап по краю — */
+$('.fade.l').addEventListener('click', () => goToBlock(currentBlock() - 1));
+$('.fade.r').addEventListener('click', () => goToBlock(currentBlock() + 1));
+
+/* — жест 3: долгий тап на pager + точная прокрутка — */
+let fast = null;   // { timer, active }
+
+pager.addEventListener('pointerdown', e => {
+  if(MODES[state.mode] === 1) return;
+  e.preventDefault();
+  pager.setPointerCapture?.(e.pointerId);
+  fast = { active:false, timer: setTimeout(() => {
+    fast.active = true;
+    pager.classList.add('zoom');
+    scroller.classList.add('nosnap');
+  }, 320) };
+});
+
+pager.addEventListener('pointermove', e => {
+  if(!fast || !fast.active) return;
+  e.preventDefault();
+  const pr = phone.getBoundingClientRect(), sc = pr.width / 360;
+  const x = (e.clientX - pr.left) / sc;                 // координата в макете 0..360
+  const t = Math.max(0, Math.min(1, (x - 36) / (360 - 72)));   // рабочая зона между краями
+  scroller.scrollLeft = t * maxScroll();
+  updatePager();
+});
+
+function endFast(){
+  if(!fast) return;
+  clearTimeout(fast.timer);
+  if(fast.active){
+    pager.classList.remove('zoom');
+    scroller.classList.remove('nosnap');
+    goToBlock(currentBlock());        // возврат к якорной позиции
+  }
+  fast = null;
+}
+pager.addEventListener('pointerup', endFast);
+pager.addEventListener('pointercancel', endFast);
+
+function updatePager(){
+  if(MODES[state.mode] === 1) return;
+  const active = currentBlock();
+  [...pager.children].forEach((d,i) => d.classList.toggle('on', i === active));
+  $('.fade.l').disabled = active === 0;
+  $('.fade.r').disabled = active === MODES[state.mode] - 1;
+}
+
+/* ═══════════ ВЕРСИИ И НАСТРОЙКИ ═══════════
+   A — сбор ручкой: инструмент берут и ведут по готовым ячейкам.
+   B — прямой сбор: ячейку трогают пальцем. Здесь появляется конфликт
+       с горизонтальной прокруткой, поэтому есть три способа развязки. */
+
+const CFG_KEY = 'generator-proto-cfg';
+const settings = $('#settings');
+
+let cfg = { collect:'tool', direct:'free' };
+try { Object.assign(cfg, JSON.parse(localStorage.getItem(CFG_KEY)) || {}); } catch {}
+// убранные варианты («тап», «направление») переезжают на свободное заметание
+if(!['free','start','hold'].includes(cfg.direct)) cfg.direct = 'free';
+
+const saveCfg = () => localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
+
+const HINTS = {
+  collect: {
+    tool:   'Как в макете: берёшь ручку снизу справа и ведёшь по готовым ячейкам.',
+    direct: 'Ручки нет, ячейку трогаешь напрямую. Ниже — чем отличать сбор от прокрутки.',
+    select: 'Как выбор фото в айфоне: отмечаешь ячейки — тапом или проводя пальцем, — а потом одним действием собираешь или засеиваешь всё выделенное. Выделение живёт между блоками.'
+  },
+  direct: {
+    free: 'Ведёшь пальцем по сетке — собирается всё готовое под ним. Свайп по сетке больше не листает: блоки переключаются краями экрана и пейджером.',
+    start:'Начал с готовой ячейки — собираешь заметанием. Начал с пустой или растущей — обычный свайп листает блоки.',
+    hold: 'Задержал палец на ячейке — прокрутка блокируется, дальше ведёшь и собираешь пачкой. Быстрый тап собирает одну.'
+  }
+};
+
+function applyCfg(){
+  const direct = cfg.collect === 'direct';
+  const select = cfg.collect === 'select';
+  phone.dataset.ver = cfg.collect;
+  $('#directRow').hidden = !direct;
+  collectTool.hidden = direct || select;   // ручка живёт только в версии A
+  $('#devver').textContent = select ? 'C' : direct ? 'B' : 'A';
+  if(!select) clearPicked();
+  $('#collectHint').textContent = HINTS.collect[cfg.collect];
+  $('#directHint').textContent = HINTS.direct[cfg.direct];
+
+  settings.querySelectorAll('[data-set]').forEach(b => {
+    const [k, v] = b.dataset.set.split(':');
+    b.classList.toggle('on', cfg[k] === v);
+  });
+  settings.querySelectorAll('[data-mode]').forEach(b =>
+    b.classList.toggle('on', b.dataset.mode === state.mode));
+}
+
+$('#devbtn').addEventListener('click', () => { settings.hidden = false; applyCfg(); });
+settings.querySelector('.close').addEventListener('click', () => { settings.hidden = true; });
+
+settings.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if(!b) return;
+
+  if(b.id === 'reset'){ state = fresh(state.mode); save(); render(); settings.hidden = true; return; }
+
+  if(b.dataset.mode){
+    if(b.dataset.mode !== state.mode){ state = fresh(b.dataset.mode); save(); render(); }
+    applyCfg();
+    return;
+  }
+
+  if(b.dataset.set){
+    const [k, v] = b.dataset.set.split(':');
+    cfg[k] = v;
+    saveCfg();
+    applyCfg();
+  }
+});
+
+/* ═══════════ ВЕРСИЯ C: ВЫДЕЛЕНИЕ, КАК В ФОТОПЛЁНКЕ ═══════════
+   Выбор и действие разведены во времени: сперва отмечаешь ячейки
+   тапом или проводя пальцем, потом применяешь действие ко всем сразу.
+   Выделение переживает переключение блоков.                        */
+
+const picked = new Set();
+const actionbar = $('#actionbar');
+let paint = null;   // { add: true|false } — красим выделение или снимаем
+
+function paintCell2(idx, add){
+  if(add === picked.has(idx)) return false;
+  add ? picked.add(idx) : picked.delete(idx);
+  cellEls[idx]?.classList.toggle('sel', add);
+  return true;
+}
+
+function clearPicked(){
+  picked.forEach(i => cellEls[i]?.classList.remove('sel'));
+  picked.clear();
+  renderActionbar();
+}
+
+function renderActionbar(){
+  if(cfg.collect !== 'select' || picked.size === 0){ actionbar.hidden = true; return; }
+  actionbar.hidden = false;
+  const arr = [...picked];
+  const ready = arr.filter(i => state.cells[i].state === 'ready').length;
+  const empty = arr.filter(i => state.cells[i].state === 'empty').length;
+  $('#selN').textContent = `Выбрано ${picked.size}`;
+  $('#selHint').textContent = ready || empty
+    ? [ready && `готовых ${ready}`, empty && `пустых ${empty}`].filter(Boolean).join(' · ')
+    : 'все ячейки заняты';
+  const btn = $('#doCollect');
+  btn.disabled = ready === 0;
+  btn.textContent = ready ? `Собрать ${ready}` : 'Собрать';
+}
+
+/* сбор всего выделенного */
+$('#doCollect').addEventListener('click', () => {
+  let n = 0;
+  picked.forEach(i => {
+    if(state.cells[i].state !== 'ready') return;
+    state.cells[i] = { state:'empty' };
+    paintCell(i);
+    n++;
+  });
+  if(n){ countFree(); save(); }
+  clearPicked();
+});
+
+$('#doClear').addEventListener('click', clearPicked);
+
+/* посев всего выделенного: тап по ресурсу в лотке */
+function seedPicked(typeId){
+  const t = byId(typeId);
+  let n = 0;
+  picked.forEach(i => {
+    if(state.cells[i].state !== 'empty') return;
+    state.cells[i] = { state:'growing', typeId, endsAt: Date.now() + t.growMs };
+    paintCell(i);
+    n++;
+  });
+  if(n){ countFree(); save(); }
+  clearPicked();
+  return n;
+}
+
+/* ═══════════ ВЕРСИЯ B: ПРЯМОЙ СБОР ═══════════ */
+
+const MOVE_TOL = 10;    // порог, после которого движение считается прокруткой
+const HOLD_MS  = 250;
+
+let dc = null;          // текущее касание сетки
+let swallowClick = false;
+
+scroller.addEventListener('pointerdown', e => {
+  if(drag) return;
+  const cell = e.target.closest('.cell');
+  if(!cell) return;
+
+  // версия C: начинаем красить выделение — добавляем или снимаем,
+  // как в фотоплёнке, направление задаёт первая тронутая ячейка
+  if(cfg.collect === 'select'){
+    const i = +cell.dataset.idx;
+    paint = { add: !picked.has(i) };
+    paintCell2(i, paint.add);
+    renderActionbar();
+    lockScroll(true);
+    dc = { idx:i, x:e.clientX, y:e.clientY, moved:false, sweeping:true, timer:null };
+    return;
+  }
+
+  if(cfg.collect !== 'direct') return;
+  const idx = +cell.dataset.idx;
+  dc = { idx, x:e.clientX, y:e.clientY, moved:false, sweeping:false, timer:null };
+
+  if(cfg.direct === 'free'){
+    // сетка целиком отдана под сбор, листание — краями и пейджером
+    startSweep();
+  } else if(cfg.direct === 'start'){
+    // решает стартовая ячейка: готовая — собираем, любая другая — листаем
+    if(state.cells[idx].state === 'ready') startSweep();
+  } else {
+    dc.timer = setTimeout(() => { if(dc && !dc.moved) startSweep(); }, HOLD_MS);
+  }
+});
+
+/* слушаем на документе: палец при заметании уходит за пределы сетки,
+   и на самой сетке отпускание можно не поймать */
+document.addEventListener('pointermove', e => {
+  if(!dc) return;
+  const dx = e.clientX - dc.x, dy = e.clientY - dc.y;
+
+  if(!dc.moved && Math.hypot(dx, dy) > MOVE_TOL){
+    dc.moved = true;
+    clearTimeout(dc.timer);   // сдвинулся раньше задержки — это прокрутка
+  }
+  if(dc.sweeping){
+    e.preventDefault();
+    sweepAt(e.clientX, e.clientY);
+    // у края блоки листаются, не отрывая палец — как при посеве
+    const pr = phone.getBoundingClientRect();
+    edgeScroll((e.clientX - pr.left) / (pr.width / 360));
+  }
+}, {passive:false});
+
+/* Блокировка прокрутки на время заметания. Позицию сохраняем руками:
+   смена overflow сбрасывает scrollLeft, и сетка прыгала бы на первый блок. */
+function lockScroll(on){
+  const x = scroller.scrollLeft;
+  scroller.style.overflowX = on ? 'hidden' : '';
+  scroller.scrollLeft = x;
+}
+
+function startSweep(){
+  dc.sweeping = true;
+  lockScroll(true);
+  sweepAt(dc.x, dc.y);
+}
+
+function sweepAt(x, y){
+  const el = document.elementFromPoint(x, y);
+  const cell = el && el.closest ? el.closest('.cell') : null;
+  if(!cell) return;
+  const i = +cell.dataset.idx;
+
+  if(cfg.collect === 'select'){          // версия C: красим выделение
+    if(paintCell2(i, paint.add)) renderActionbar();
+    swallowClick = true;
+    return;
+  }
+  if(state.cells[i].state === 'ready'){ collect(i); swallowClick = true; }
+}
+
+function endDirect(){
+  if(!dc) return;
+  clearTimeout(dc.timer);
+  paint = null;
+  // тап без движения — собираем одну ячейку
+  if(!dc.moved && !dc.sweeping && state.cells[dc.idx].state === 'ready'){
+    collect(dc.idx);
+    swallowClick = true;
+  }
+  lockScroll(false);
+  dc = null;
+  stopEdgeScroll();
+}
+document.addEventListener('pointerup', endDirect);
+document.addEventListener('pointercancel', endDirect);
+addEventListener('blur', endDirect);
+
+/* ═══════════ СКЕЛЕТОН + СТАРТ ═══════════ */
+
+function buildSkeleton(){
+  skeleton.innerHTML = '';
+  const add = (css) => {
+    const d = document.createElement('div');
+    d.className = 'sk'; d.style.cssText = css; skeleton.appendChild(d); return d;
+  };
+  add('position:absolute;left:16px;top:96px;width:200px;height:34px;border-radius:8px');
+  add('position:absolute;left:16px;top:148px;width:140px;height:18px;border-radius:5px');
+  const g = add('position:absolute;left:36px;top:216px;width:288px;height:288px;background:none');
+  g.style.cssText += ';display:grid;grid-template-columns:repeat(5,56px);grid-auto-rows:56px;gap:2px';
+  g.className = '';
+  for(let i=0;i<25;i++){
+    const c = document.createElement('div');
+    c.className='sk'; c.style.animationDelay=(i*16)+'ms';
+    g.appendChild(c);
+  }
+  add('position:absolute;left:40px;top:618px;width:80px;height:80px;border-radius:12px');
+  add('position:absolute;left:132px;top:618px;width:80px;height:80px;border-radius:12px');
+  add('position:absolute;left:224px;top:618px;width:80px;height:80px;border-radius:12px');
+}
+
+function render(){
+  hideTip();
+  selCell = null;
+  picked.clear();               // сетка пересобирается — старые ссылки на ячейки не годятся
+  anchorBlock = 0;
+  stopEdgeScroll();
+  buildSkeleton();
+  skeleton.classList.add('on');
+  buildGrid();
+  buildTray();
+  applyCfg();
+  renderActionbar();
+  scroller.scrollLeft = 0;
+  fit();
+  setTimeout(() => skeleton.classList.remove('on'), SKELETON_MS);
+}
+
+render();
+</script>
+</body>
+</html>
