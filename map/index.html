@@ -566,23 +566,82 @@ function apply(){
   canvas.style.transform = `translate(${ox}px, ${oy}px) scale(${scale})`;
 }
 function fit(){
-  scale = Math.max(innerWidth/MAP_W, innerHeight/MAP_H);
+  minScale = fitScale();
+  scale = minScale;
   ox = (innerWidth - MAP_W*scale)/2;
   oy = (innerHeight - MAP_H*scale)/2;
   apply();
 }
 addEventListener('resize', fit);
 
-viewport.addEventListener('pointerdown', e => { drag = {x:e.clientX, y:e.clientY, ox, oy}; panned = false; });
+/* Панорама одним пальцем и зум щипком. Минимальный масштаб — тот,
+   при котором карта закрывает экран, чтобы не появлялись пустые поля. */
+
+const pts = new Map();
+let pinch = null, minScale = 1;
+const MAX_SCALE = 2.6;
+
+function fitScale(){ return Math.max(innerWidth / MAP_W, innerHeight / MAP_H); }
+
+viewport.addEventListener('pointerdown', e => {
+  pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(pts.size === 1){
+    drag = {x:e.clientX, y:e.clientY, ox, oy};
+    panned = false;
+  } else if(pts.size === 2){
+    drag = null;
+    panned = true;                       // это жест масштаба, не тап
+    const [a, b] = [...pts.values()];
+    const mid = {x:(a.x + b.x)/2, y:(a.y + b.y)/2};
+    pinch = {
+      dist: Math.hypot(a.x - b.x, a.y - b.y),
+      scale0: scale,
+      // точка карты под серединой пальцев — она должна остаться на месте
+      cx: (mid.x - ox) / scale,
+      cy: (mid.y - oy) / scale
+    };
+  }
+});
+
 addEventListener('pointermove', e => {
+  if(pts.has(e.pointerId)) pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+
+  if(pinch && pts.size >= 2){
+    const [a, b] = [...pts.values()];
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    const mid = {x:(a.x + b.x)/2, y:(a.y + b.y)/2};
+    scale = Math.min(MAX_SCALE, Math.max(minScale, pinch.scale0 * dist / pinch.dist));
+    ox = mid.x - pinch.cx * scale;
+    oy = mid.y - pinch.cy * scale;
+    apply();
+    return;
+  }
+
   if(!drag) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   if(Math.hypot(dx, dy) > 6) panned = true;
   ox = drag.ox + dx; oy = drag.oy + dy;
   apply();
 });
-addEventListener('pointerup',     () => { drag = null; });
-addEventListener('pointercancel', () => { drag = null; });
+
+function endPointer(e){
+  pts.delete(e.pointerId);
+  if(pts.size < 2) pinch = null;
+  if(pts.size === 0) drag = null;
+}
+addEventListener('pointerup', endPointer);
+addEventListener('pointercancel', endPointer);
+
+/* колесо с зажатым Ctrl — чтобы можно было проверить зум на десктопе */
+viewport.addEventListener('wheel', e => {
+  e.preventDefault();
+  const k = Math.exp(-e.deltaY / 300);
+  const before = {x:(e.clientX - ox)/scale, y:(e.clientY - oy)/scale};
+  scale = Math.min(MAX_SCALE, Math.max(minScale, scale * k));
+  ox = e.clientX - before.x * scale;
+  oy = e.clientY - before.y * scale;
+  apply();
+}, {passive:false});
 
 /* ═══════════ ЭКРАН ЗДАНИЯ ═══════════ */
 
@@ -746,10 +805,12 @@ function placePoint(){
   const el = sel && document.querySelector(sel);
   if(!el){ point.classList.remove('on'); return; }
   const r = el.getBoundingClientRect();
-  const below = r.top > innerHeight * 0.55;     // цель внизу — показываем снизу вверх
+  // решаем по свободному месту: под кнопкой у нижнего края его нет,
+  // и стрелка уезжала за экран
+  const below = innerHeight - r.bottom > 76;
   point.textContent = below ? '⬆' : '⬇';
   point.style.left = (r.left + r.width/2 - 22) + 'px';
-  point.style.top  = below ? (r.bottom + 8) + 'px' : Math.max(60, r.top - 58) + 'px';
+  point.style.top  = below ? (r.bottom + 8) + 'px' : Math.max(60, r.top - 60) + 'px';
   // цель уехала за пределы экрана — стрелку прячем
   point.classList.toggle('on', r.bottom > 0 && r.top < innerHeight);
 }
