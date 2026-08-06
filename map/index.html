@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Карта — прототип</title>
-<link rel="stylesheet" href="../shared/generator/generator.css">
+<link rel="stylesheet" href="../shared/generator/generator.css?v=202608062314">
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
   html,body{margin:0;height:100%;background:#d8c08c;overflow:hidden;overscroll-behavior:none;
@@ -33,7 +33,11 @@
   .art img{display:block;width:150px;height:auto}
 
   /* свободная плитка видна только в режиме размещения */
-  .plot[data-state="free"] .pad{opacity:0}
+  .plot .pad{opacity:0}
+  .plot.ghost .pad{opacity:1;background:rgba(120,255,150,.55);border:0}
+  .plot.ghost .art img{opacity:.95}
+  .placeRow{display:flex;gap:10px;justify-content:space-between;width:100%}
+  #dock{flex-direction:column;gap:10px}
   body.placing .plot[data-state="free"] .pad{
     opacity:1;background:rgba(90,230,120,.45);border:2px solid rgba(140,255,170,.9);cursor:pointer}
   body.placing .plot[data-state="free"].pick .pad{background:rgba(120,255,150,.75)}
@@ -180,7 +184,8 @@
   #story .who .name.granny{background:#7b5cff}
   #story .bubble{margin-top:14px;background:#1c1c1e;border-radius:18px;padding:16px 18px 20px;
     font-size:16px;line-height:1.35;font-weight:500;position:relative;box-shadow:0 10px 30px rgba(0,0,0,.6)}
-  #story .bubble .next{position:absolute;right:14px;bottom:8px;color:#ffd60a;font-size:12px}
+  #story .bubble .next{position:absolute;right:8px;bottom:4px;color:#ffd60a;font-size:15px;
+    border:0;background:none;padding:8px 12px;pointer-events:auto}
 
   /* стрелка-указатель на элемент интерфейса */
   #point{position:fixed;z-index:62;display:none;font-size:44px;color:#ffd60a;pointer-events:none;
@@ -236,7 +241,7 @@
 
 <div id="story">
   <div class="who"><img alt=""><span class="name"></span></div>
-  <div class="bubble"><span class="text"></span><span class="next">▼</span></div>
+  <div class="bubble"><span class="text"></span><button class="next" aria-label="Дальше">▼</button></div>
 </div>
 <div id="point">⬇</div>
 
@@ -267,7 +272,7 @@
   </div>
 
 
-<script src="../shared/generator/generator.js"></script>
+<script src="../shared/generator/generator.js?v=202608062314"></script>
 <script>
 'use strict';
 
@@ -294,27 +299,34 @@ const CATALOG = [
 ];
 const itemById = id => CATALOG.flatMap(c => c.items).find(i => i.id === id);
 
-/* свободные плитки: куда вообще можно ставить */
-const PLOTS = [
-  { id:'p0', x:285, y:880 },      // генератор, стоит на карте изначально
-  { id:'p1', x:150, y:520 },
-  { id:'p2', x:612, y:840 },
-  { id:'p3', x:735, y:1075 },
-  { id:'p4', x:430, y:1010 },
-];
+/* Здания стоят где поставили: у каждого свои координаты на карте.
+   Изометрия — ромбы, поэтому позицию притягиваем к решётке ромбов. */
+const TILE_W = 92, TILE_H = 46;
+
+function snapIso(x, y){
+  const a = Math.round((x / TILE_W) + (y / TILE_H));
+  const b = Math.round((y / TILE_H) - (x / TILE_W));
+  return { x: (a - b) / 2 * TILE_W, y: (a + b) / 2 * TILE_H };
+}
 
 const KEY = 'farm-map-v2';
 let coins = 5000;
-let built = {};        // plotId → { itemId, state:'building'|'gift'|'ready', endsAt, flip }
+let built = [];        // { id, itemId, state, endsAt, flip, x, y }
+let seq = 1;
 
-function save(){ localStorage.setItem(KEY, JSON.stringify({coins, built})); }
+function save(){ localStorage.setItem(KEY, JSON.stringify({coins, built, seq})); }
 function load(){
   try{
     const r = JSON.parse(localStorage.getItem(KEY));
-    if(r && typeof r === 'object'){ coins = r.coins ?? 5000; built = r.built || {}; }
+    if(r && typeof r === 'object'){
+      coins = r.coins ?? 5000;
+      built = Array.isArray(r.built) ? r.built : [];
+      seq = r.seq || 1;
+    }
   }catch{}
-  // генератор нарисован на самой карте — площадка нужна только чтобы по нему тапали
-  built.p0 = { itemId:'gen', state:'ready' };
+  // генератор нарисован на самой карте — запись нужна только чтобы по нему тапали
+  if(!built.some(b => b.id === 'gen'))
+    built.unshift({ id:'gen', itemId:'gen', state:'ready', x:285, y:880 });
 }
 load();
 
@@ -323,60 +335,48 @@ load();
 const canvas = document.getElementById('canvas');
 const hintline = document.getElementById('hintline');
 const coinsEl = document.getElementById('coins');
-const plotEls = {};
-
-function buildPlots(){
-  PLOTS.forEach(p => {
+function paintAll(){
+  // здания перерисовываем целиком: их немного, а код проще
+  [...canvas.querySelectorAll('.plot')].forEach(el => el.remove());
+  built.forEach(b => {
+    const item = itemById(b.itemId);
     const el = document.createElement('div');
     el.className = 'plot';
-    el.style.left = p.x + 'px';
-    el.style.top = p.y + 'px';
-    el.dataset.id = p.id;
-    el.innerHTML = '<div class="pad"></div><div class="art"></div>';
+    el.dataset.id = b.id;
+    el.dataset.state = b.state;
+    el.style.left = b.x + 'px';
+    el.style.top  = b.y + 'px';
+
+    const src = b.state === 'building' ? (item.artBuild || item.art)
+              : b.state === 'gift'     ? (item.artGift  || item.art)
+              : item.art;
+    el.innerHTML =
+      `<div class="pad"></div>
+       <div class="art">${src ? `<img src="${src}" alt="" style="transform:scaleX(${b.flip ? -1 : 1})">` : ''}</div>` +
+      (b.state === 'building' ? '<div class="chip">🕐 …</div>'
+       : b.state === 'gift'   ? '<div class="chip unlock">🔓</div>'
+       : b.id === 'gen'       ? `<div class="label">Генератор</div>`
+       : `<div class="label">${item.name}</div>`);
     canvas.appendChild(el);
-    plotEls[p.id] = el;
   });
-  paintAll();
+  coinsEl.textContent = coins.toLocaleString('ru');
 }
-
-function paintPlot(p){
-  const el = plotEls[p.id];
-  const b = built[p.id];
-  el.querySelectorAll('.chip,.label,.scaffold,.gift').forEach(n => n.remove());
-  const art = el.querySelector('.art');
-
-  if(!b){ el.dataset.state = 'free'; art.innerHTML = ''; return; }
-
-  const item = itemById(b.itemId);
-  el.dataset.state = b.state;
-
-  const src = b.state === 'building' ? (item.artBuild || item.art)
-            : b.state === 'gift'     ? (item.artGift  || item.art)
-            : item.art;
-  art.innerHTML = src ? `<img src="${src}" alt="" style="transform:scaleX(${b.flip ? -1 : 1})">` : '';
-
-  if(b.state === 'building')  el.insertAdjacentHTML('beforeend', '<div class="chip">🕐 …</div>');
-  else if(b.state === 'gift') el.insertAdjacentHTML('beforeend', '<div class="chip unlock">🔓</div>');
-  else                        el.insertAdjacentHTML('beforeend', `<div class="label">${item.name}</div>`);
-}
-const paintAll = () => { PLOTS.forEach(paintPlot); coinsEl.textContent = coins.toLocaleString('ru'); };
 
 /* ═══════════ ТАЙМЕР СТРОЙКИ ═══════════ */
 
 setInterval(() => {
   const now = Date.now();
-  Object.entries(built).forEach(([pid, b]) => {
+  built.forEach(b => {
     if(b.state !== 'building') return;
     const left = b.endsAt - now;
     if(left <= 0){
       b.state = 'gift';                 // достроилось — но сперва надо раскрыть
-      paintPlot(PLOTS.find(p => p.id === pid));
-      save();
+      paintAll(); save();
     } else {
-      const chip = plotEls[pid].querySelector('.chip');
+      const chip = canvas.querySelector(`.plot[data-id="${b.id}"] .chip`);
       if(chip){
-        const s = Math.ceil(left / 1000);
-        chip.textContent = `🕐 ${Math.floor(s/60)} мин ${s%60} сек`;
+        const t = Math.ceil(left / 1000);
+        chip.textContent = `🕐 ${Math.floor(t/60)} мин ${t%60} сек`;
       }
     }
   });
@@ -384,14 +384,18 @@ setInterval(() => {
 
 /* ═══════════ РЕЖИМ РАЗМЕЩЕНИЯ ═══════════ */
 
-let placing = null;    // { itemId, plotId, flip }
+/* ═══ размещение: здание таскают по карте, а не выбирают из площадок ═══ */
+
+let placing = null;   // { itemId, x, y, flip }
+let ghostEl = null;
 
 function startPlacing(itemId){
   const item = itemById(itemId);
   if(coins < item.price) return say('Не хватает монет');
   closeSheet();
-  placing = { itemId, plotId: PLOTS.find(p => !built[p.id])?.id, flip:false };
-  if(!placing.plotId){ placing = null; return say('Свободных мест нет'); }
+  // ставим в центр экрана, дальше человек двигает пальцем
+  placing = { itemId, flip:false,
+    ...snapIso((innerWidth/2 - ox) / scale, (innerHeight/2 - oy) / scale) };
   document.body.classList.add('placing');
   renderPlacing();
   scFire('placing');
@@ -399,23 +403,30 @@ function startPlacing(itemId){
 
 function renderPlacing(){
   const item = itemById(placing.itemId);
-  PLOTS.forEach(p => {
-    const el = plotEls[p.id];
-    el.classList.toggle('pick', p.id === placing.plotId);
-    if(built[p.id]) return;
-    el.querySelector('.art').innerHTML = p.id === placing.plotId
-      ? `<img src="${item.art}" alt="" style="opacity:.85;transform:scaleX(${placing.flip ? -1 : 1})">`
-      : '';
-  });
+  if(!ghostEl){
+    ghostEl = document.createElement('div');
+    ghostEl.className = 'plot ghost';
+    ghostEl.innerHTML = '<div class="pad"></div><div class="art"></div>';
+    canvas.appendChild(ghostEl);
+  }
+  ghostEl.style.left = placing.x + 'px';
+  ghostEl.style.top  = placing.y + 'px';
+  ghostEl.querySelector('.art').innerHTML =
+    `<img src="${item.art}" alt="" style="transform:scaleX(${placing.flip ? -1 : 1})">`;
+
   dock.innerHTML =
-    `<button class="square" id="cancel">✕</button>
-     <button class="primary" id="confirm">Построить за ${item.price.toLocaleString('ru')}</button>
-     <button class="square" id="flip">↻</button>`;
-  say('Выбери место на карте');
+    `<div class="placeRow">
+       <button class="square" id="cancel">✕</button>
+       <button class="square" id="flip">↻</button>
+     </div>
+     <button class="primary" id="confirm">Построить за ${item.price.toLocaleString('ru')}</button>`;
+  say('Перетащи здание, куда поставить');
 }
 
 function stopPlacing(){
   placing = null;
+  ghostEl?.remove();
+  ghostEl = null;
   document.body.classList.remove('placing');
   dock.innerHTML = '<button class="primary" id="openSheet">🔨 Постройки</button>';
   paintAll();
@@ -431,7 +442,8 @@ dock.addEventListener('click', e => {
   if(b.id === 'confirm'){
     const item = itemById(placing.itemId);
     coins -= item.price;
-    built[placing.plotId] = { itemId:item.id, state:'building', endsAt:Date.now()+BUILD_MS, flip:placing.flip };
+    built.push({ id:'b' + (seq++), itemId:item.id, state:'building',
+                 endsAt:Date.now() + BUILD_MS, flip:placing.flip, x:placing.x, y:placing.y });
     stopPlacing();
     save();
     say(`${item.name} строится`);
@@ -444,32 +456,26 @@ canvas.addEventListener('click', e => {
   const wasPanned = panned; panned = false;
   if(wasPanned) return;
 
+  if(placing) return;                     // в режиме размещения тапы не нужны
   const el = e.target.closest('.plot');
   if(!el) return;
-  const pid = el.dataset.id;
-
-  if(placing){                            // выбираем плитку под здание
-    if(!built[pid]){ placing.plotId = pid; renderPlacing(); }
-    return;
-  }
-
-  const b = built[pid];
-  if(!b) return say('Строить можно через кнопку «Постройки»');
+  const b = built.find(x => x.id === el.dataset.id);
+  if(!b) return;
   if(b.state === 'building') return say('Ещё строится');
-  if(b.state === 'gift')     return unwrap(pid);
+  if(b.state === 'gift')     return unwrap(b);
   const item = itemById(b.itemId);
   if(item.opens === 'generator') return openGenerator();
   say(`${item.name}: экран пока не сделан`);
 });
 
 /* раскрываем подарок → конфетти → здание готово */
-function unwrap(pid){
-  built[pid].state = 'ready';
-  paintPlot(PLOTS.find(p => p.id === pid));
+function unwrap(b){
+  b.state = 'ready';
+  paintAll();
   save();
   confetti();
   scFire('built');
-  say(`${itemById(built[pid].itemId).name} построен`);
+  say(`${itemById(b.itemId).name} построен`);
 }
 
 function confetti(){
@@ -585,6 +591,12 @@ function fitScale(){ return Math.max(innerWidth / MAP_W, innerHeight / MAP_H); }
 
 viewport.addEventListener('pointerdown', e => {
   pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(placing && pts.size === 1){
+    // ведём здание, а не карту
+    moveGhost(e.clientX, e.clientY);
+    drag = null;
+    return;
+  }
   if(pts.size === 1){
     drag = {x:e.clientX, y:e.clientY, ox, oy};
     panned = false;
@@ -603,8 +615,18 @@ viewport.addEventListener('pointerdown', e => {
   }
 });
 
+function moveGhost(cx, cy){
+  const mx = (cx - ox) / scale;
+  const my = (cy - oy) / scale;
+  Object.assign(placing, snapIso(mx, my));
+  ghostEl.style.left = placing.x + 'px';
+  ghostEl.style.top  = placing.y + 'px';
+}
+
 addEventListener('pointermove', e => {
   if(pts.has(e.pointerId)) pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+
+  if(placing && pts.size === 1 && ghostEl){ moveGhost(e.clientX, e.clientY); return; }
 
   if(pinch && pts.size >= 2){
     const [a, b] = [...pts.values()];
@@ -650,7 +672,8 @@ const screen = document.getElementById('screen');
 // генератор создаётся сразу: онбординг подписывается на его события
 const gen0 = createGenerator(document.getElementById('app'), {
   assets:'../assets', storeKey:'farm-onb-generator',
-  mode:'single', cells:5, unlocked:['coffee'], chrome:false, dim:true
+  mode:'single', cells:5, unlocked:['coffee'], chrome:false, dim:true,
+  version:'direct'
 });
 gen0.reset();
 const gen = gen0;
@@ -663,7 +686,7 @@ function openGenerator(){
 screen.querySelector('.back').addEventListener('click', () => screen.classList.remove('on'));
 
 document.getElementById('reset').addEventListener('click', () => {
-  coins = 5000; built = {}; save(); stopPlacing(); paintAll(); say('Карта сброшена');
+  coins = 5000; built = []; seq = 1; load(); save(); stopPlacing(); paintAll(); say('Карта сброшена');
 });
 
 
@@ -711,14 +734,15 @@ const SCRIPT = [
   { pointAt:'[data-cat="Преобразователи"]', wait:'catOpened' },
   { who:'grandson', text:'Нам нужна кофейня давай строить',
     pointAt:'[data-item="coffee"]', wait:'placing' },
-  { text:'Выбери место и подтверди', wait:'built' },
+  { hint:'Перетащи здание, куда поставить, и жми «Построить»', wait:'built' },
   { who:'grandson', text:'СКОРЕЕ сделаем кофе я хочу латте на безлактозном' },
 ];
 
-let sc = -1, scWait = null;
+let sc = -1, scWait = null, shownAt = 0;
 
 function scNext(){
   sc++;
+  shownAt = Date.now();
   hidePoint();
   if(sc >= SCRIPT.length){ story.classList.remove('on'); scWait = null; return; }
   const st = SCRIPT[sc];
@@ -753,9 +777,12 @@ function scNext(){
     story.classList.toggle('tap', !!st.text && !st.wait);
   }
 
+  if(st.hint) say(st.hint);
   if(st.showOldman) document.getElementById('oldman').classList.add('on');
   // пока персонаж говорит, кнопка «Постройки» скрыта — она крупная и отвлекает
-  dock.style.display = (st.text && !overSheet) ? 'none' : '';
+  // прячем только приглашение строить: в режиме размещения внизу
+  // живут ✕, поворот и «Построить» — их гасить нельзя
+  dock.style.display = (st.text && !overSheet && !placing) ? 'none' : '';
   if(st.focus) focusOn(st.focus);
   if(st.pointAt) setTimeout(() => pointTo(st.pointAt), st.focus ? 700 : 60);
 
@@ -764,7 +791,15 @@ function scNext(){
 }
 
 /* по тапу листаем только те шаги, которые ничего не ждут */
-story.addEventListener('click', () => { if(!scWait) scNext(); });
+/* реплику нельзя пролистнуть мгновенно: случайные и повторные касания
+   раньше проматывали сразу несколько шагов */
+/* Листаем только явной кнопкой «далее». Раньше засчитывалось любое
+   касание панели, и сюжет пролетал на несколько шагов сразу. */
+story.querySelector('.next').addEventListener('click', () => {
+  if(scWait) return;
+  if(Date.now() - shownAt < 350) return;
+  scNext();
+});
 
 /* ─── камера ─── */
 
@@ -934,7 +969,7 @@ gen0.on('change', st => {
   if(genWait === 'allSeeded' && st.empty === 0){ genWait = null; scNext(); }
 });
 
-buildPlots();
+paintAll();
 fit();
 scNext();
 </script>

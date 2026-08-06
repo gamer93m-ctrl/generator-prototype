@@ -77,8 +77,9 @@ const GENERATOR_MARKUP = String.raw`<div id="phone">
       <div class="row">
         <div class="label">ВЕРСИЯ СБОРА</div>
         <div class="seg">
-          <button data-set="collect:direct">Забиранием</button>
-          <button data-set="collect:select">Выделением</button>
+          <button data-set="collect:tool">A · ручкой</button>
+          <button data-set="collect:direct">B · забиранием</button>
+          <button data-set="collect:select">C · выделением</button>
         </div>
         <div class="hint" id="collectHint"></div>
       </div>
@@ -373,7 +374,7 @@ tray.addEventListener('click', e => {
 });
 
 collectTool.addEventListener('pointerdown', e => {
-  if(cfg.collect === 'direct') return;      // в версии B ручка не заметает
+  if(cfg.collect !== 'tool') return;         // ручка заметает только в версии A
   e.preventDefault();
   startDrag('collect', collectTool, null, e);
 });
@@ -655,19 +656,21 @@ function updatePager(){
    B — прямой сбор: ячейку трогают пальцем. Здесь появляется конфликт
        с горизонтальной прокруткой, поэтому есть три способа развязки. */
 
-const CFG_KEY = 'generator-proto-cfg';
+// настройки свои у каждого прототипа: иначе онбординг перезаписывал
+// версию сбора в отдельно живущем генераторе
+const CFG_KEY = 'generator-cfg-' + (opts.storeKey || 'default');
 const settings = $('#settings');
 
-let cfg = { collect:'direct', direct:'free' };
+let cfg = { collect:'tool', direct:'free' };
 try { Object.assign(cfg, JSON.parse(localStorage.getItem(CFG_KEY)) || {}); } catch {}
 // убранные варианты («тап», «направление») переезжают на свободное заметание
 if(!['free','start','hold'].includes(cfg.direct)) cfg.direct = 'free';
-  if(cfg.collect === 'tool') cfg.collect = 'direct';   // ручка убрана из механики
 
 const saveCfg = () => localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
 
 const HINTS = {
   collect: {
+      tool:   'Как в макете: берёшь ручку снизу справа и ведёшь по готовым ячейкам.',
     direct: 'Ручки нет, ячейку трогаешь напрямую. Ниже — чем отличать сбор от прокрутки.',
     select: 'Как выбор фото в айфоне: отмечаешь ячейки — тапом или проводя пальцем, — а потом одним действием собираешь или засеиваешь всё выделенное. Выделение живёт между блоками.'
   },
@@ -683,8 +686,8 @@ function applyCfg(){
   const select = cfg.collect === 'select';
   phone.dataset.ver = cfg.collect;
   $('#directRow').hidden = !direct;
-  collectTool.hidden = true;               // ручки в механике больше нет
-  $('#devver').textContent = select ? 'выделение' : 'забирание';
+  collectTool.hidden = direct || select;    // ручка живёт только в версии A
+  $('#devver').textContent = select ? 'C' : direct ? 'B' : 'A';
   if(!select) clearPicked();
   $('#collectHint').textContent = HINTS.collect[cfg.collect];
   $('#directHint').textContent = HINTS.direct[cfg.direct];
