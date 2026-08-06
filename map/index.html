@@ -60,11 +60,13 @@
   .square{width:56px;background:#ffd60a;color:#000;border:0;border-radius:14px;font-size:20px}
 
   /* ─── каталог построек: два экрана, как в макете ─── */
-  #sheet{position:fixed;inset:0;z-index:40;background:#000;display:none;flex-direction:column}
+  #sheet{position:fixed;left:0;top:0;width:100%;height:100%;z-index:40;background:#000;
+    display:none;flex-direction:column;overflow:hidden}
   #sheet.on{display:flex}
   .sheetTop{position:relative;flex:0 0 auto;padding:44px 16px 0}
   .sheetTop .row{display:flex;align-items:center;gap:8px}
-  .sheetTop .back{border:0;background:none;color:#0a84ff;font:300 26px/24px inherit;padding:4px 10px 4px 0}
+  .sheetTop .back{border:0;background:none;color:#0a84ff;font:300 34px/1 inherit;
+    padding:0 8px 4px 0;margin-right:auto}
   .sheetTop h2{margin:16px 0 0;font-size:34px;font-weight:700;letter-spacing:-.5px;color:rgba(255,255,255,.28)}
 
   /* экран категорий */
@@ -203,7 +205,7 @@
 <div id="sheet">
   <div class="sheetTop">
     <div class="row">
-      <button class="back">‹</button>
+      <button class="back" aria-label="Назад">‹</button>
       <span class="pill"><i class="i-gem"></i>500</span>
       <span class="pill"><i class="i-coin"></i><b id="coins2">5 000</b></span>
     </div>
@@ -641,7 +643,7 @@ let sc = -1, scWait = null;
 
 function scNext(){
   sc++;
-  point.classList.remove('on');
+  hidePoint();
   if(sc >= SCRIPT.length){ story.classList.remove('on'); scWait = null; return; }
   const st = SCRIPT[sc];
 
@@ -704,16 +706,33 @@ function focusOn(what){
 
 /* ─── стрелка на элемент ─── */
 
+let pointSel = null, pointRaf = 0;
+
 function pointTo(sel){
-  const el = document.querySelector(sel);
-  if(!el) return;
+  pointSel = sel;
+  placePoint();
+  cancelAnimationFrame(pointRaf);
+  (function follow(){
+    if(!pointSel) return;
+    placePoint();
+    pointRaf = requestAnimationFrame(follow);
+  })();
+}
+
+function placePoint(){
+  const sel = pointSel;
+  const el = sel && document.querySelector(sel);
+  if(!el){ point.classList.remove('on'); return; }
   const r = el.getBoundingClientRect();
   const below = r.top > innerHeight * 0.55;     // цель внизу — показываем снизу вверх
   point.textContent = below ? '⬆' : '⬇';
   point.style.left = (r.left + r.width/2 - 22) + 'px';
   point.style.top  = below ? (r.bottom + 8) + 'px' : Math.max(60, r.top - 58) + 'px';
-  point.classList.add('on');
+  // цель уехала за пределы экрана — стрелку прячем
+  point.classList.toggle('on', r.bottom > 0 && r.top < innerHeight);
 }
+
+function hidePoint(){ pointSel = null; cancelAnimationFrame(pointRaf); point.classList.remove('on'); }
 
 /* ─── сценарий внутри генератора ─── */
 
