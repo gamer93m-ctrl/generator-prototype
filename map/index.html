@@ -9,69 +9,132 @@
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
   html,body{margin:0;height:100%;background:#d8c08c;overflow:hidden;overscroll-behavior:none;
     font:400 15px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:#fff}
+  button{font:inherit;cursor:pointer}
 
-  /* ─── карта: холст двигается пальцем ─── */
-  #viewport{position:fixed;inset:0;overflow:hidden;touch-action:none;cursor:grab}
-  #viewport.dragging{cursor:grabbing}
+  /* ─── карта ─── */
+  #viewport{position:fixed;inset:0;overflow:hidden;touch-action:none}
   #canvas{position:absolute;left:0;top:0;width:922px;height:1200px;transform-origin:0 0}
   #canvas img.base{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 
-  /* ─── площадка под здание ─── */
-  .slot{position:absolute;transform:translate(-50%,-50%);cursor:pointer}
-  .slot .plate{
-    width:140px;height:78px;transform:rotate(45deg) scaleY(.58);transform-origin:center;
-    border-radius:6px;
-  }
-  .slot[data-state="free"] .plate{border:2px dashed rgba(255,255,255,.75);background:rgba(255,255,255,.12)}
-  .slot[data-state="locked"] .plate{border:2px solid rgba(0,0,0,.25);background:rgba(0,0,0,.22)}
-  .slot[data-state="building"] .plate,
-  .slot[data-state="ready"] .plate{border:0;background:none}
+  .plot{position:absolute;transform:translate(-50%,-50%);width:150px;height:150px}
+  .pad{position:absolute;left:50%;top:50%;width:140px;height:78px;
+    transform:translate(-50%,-50%) rotate(45deg) scaleY(.58);border-radius:6px;transition:.15s}
+  .art{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);pointer-events:none}
+  .art img{display:block;width:150px;height:auto}
 
-  .slot .art{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);pointer-events:none}
-  .slot .art img{display:block;width:170px;height:auto}
+  /* свободная плитка видна только в режиме размещения */
+  .plot[data-state="free"] .pad{opacity:0}
+  body.placing .plot[data-state="free"] .pad{
+    opacity:1;background:rgba(90,230,120,.45);border:2px solid rgba(140,255,170,.9);cursor:pointer}
+  body.placing .plot[data-state="free"].pick .pad{background:rgba(120,255,150,.75)}
 
-  .slot .badge{
-    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-    display:flex;flex-direction:column;align-items:center;gap:4px;
-    font-size:13px;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,.6);white-space:nowrap;
-  }
-  .slot .badge .icon{font-size:22px;line-height:1}
-  .slot[data-state="ready"] .badge{top:auto;bottom:-6px;transform:translateX(-50%)}
+  /* строительные леса */
+  .plot[data-state="building"] .pad{opacity:1;background:rgba(210,210,210,.25);
+    border:2px dashed rgba(255,255,255,.85)}
+  .plot[data-state="building"] .art img{opacity:.55;filter:grayscale(.4)}
+  .scaffold{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);
+    width:150px;height:110px;pointer-events:none;
+    background:repeating-linear-gradient(90deg,rgba(255,255,255,.5) 0 3px,transparent 3px 22px),
+               repeating-linear-gradient(0deg,rgba(255,255,255,.5) 0 3px,transparent 3px 34px);
+    border:2px solid rgba(255,255,255,.6);border-radius:4px}
 
-  /* прогресс стройки */
-  .slot .bar{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-    width:96px;height:6px;border-radius:3px;background:rgba(0,0,0,.45);overflow:hidden}
-  .slot .bar i{display:block;height:100%;width:0;background:#ffd60a;transition:width .1s linear}
+  /* подарочная упаковка */
+  .gift{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);width:150px;height:120px;
+    background:linear-gradient(#c98c5a,#a86b3d);border-radius:8px;box-shadow:0 6px 14px rgba(0,0,0,.35)}
+  .gift::before{content:"";position:absolute;left:0;right:0;top:38%;height:22px;background:#d33a3a}
+  .gift::after{content:"🎀";position:absolute;left:50%;top:22%;transform:translate(-50%,-50%);font-size:34px}
+
+  .chip{position:absolute;left:50%;top:0;transform:translate(-50%,-120%);
+    background:#fff;color:#000;border-radius:100px;padding:6px 12px;font:600 13px/1 inherit;white-space:nowrap;
+    box-shadow:0 4px 12px rgba(0,0,0,.3)}
+  .chip.unlock{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;
+    font-size:26px;padding:0;animation:bob 1.2s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translate(-50%,-120%)}50%{transform:translate(-50%,-145%)}}
+
+  .label{position:absolute;left:50%;bottom:-4px;transform:translateX(-50%);
+    background:rgba(0,0,0,.6);border-radius:100px;padding:5px 10px;
+    font:600 12px/1 inherit;white-space:nowrap}
 
   /* ─── шапка ─── */
-  #bar{position:fixed;left:0;right:0;top:0;z-index:10;display:flex;align-items:center;gap:8px;
-    padding:14px 16px;background:linear-gradient(#000c,#0000);pointer-events:none}
-  #bar h1{margin:0;font-size:17px;font-weight:600;flex:1}
-  #bar .pill{pointer-events:auto;background:rgba(0,0,0,.5);border:0;color:#fff;border-radius:100px;
-    padding:8px 13px;font:600 13px/1 inherit;cursor:pointer}
-  #hintline{position:fixed;left:16px;right:16px;bottom:20px;z-index:10;text-align:center;
-    font-size:13px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.8);pointer-events:none}
+  #bar{position:fixed;left:0;right:0;top:0;z-index:20;display:flex;align-items:center;gap:8px;
+    padding:14px 16px;background:linear-gradient(#000a,#0000);pointer-events:none}
+  #bar .money{pointer-events:auto;display:flex;gap:8px}
+  .pill{background:rgba(0,0,0,.55);border:0;color:#fff;border-radius:100px;padding:8px 13px;
+    font:600 13px/1 inherit;display:flex;align-items:center;gap:6px}
+  .pill i{width:15px;height:15px;border-radius:50%;display:block}
+  .i-gem{background:radial-gradient(circle at 34% 28%,#7ee0ff,#1a6ee8 72%)}
+  .i-coin{background:radial-gradient(circle at 34% 28%,#ffe066,#f0940a 72%)}
+  #bar .grow{flex:1}
+  #reset{pointer-events:auto}
 
-  /* ─── экран здания поверх карты ─── */
+  /* ─── нижняя кнопка ─── */
+  #dock{position:fixed;left:16px;right:16px;bottom:24px;z-index:20;display:flex;gap:10px}
+  .primary{flex:1;background:#ffd60a;color:#000;border:0;border-radius:14px;padding:16px;
+    font:600 16px/1 inherit;display:flex;align-items:center;justify-content:center;gap:8px}
+  .square{width:56px;background:#ffd60a;color:#000;border:0;border-radius:14px;font-size:20px}
+
+  /* ─── каталог построек ─── */
+  #sheet{position:fixed;inset:0;z-index:40;background:#000;display:none;flex-direction:column}
+  #sheet.on{display:flex}
+  #sheet header{display:flex;align-items:center;gap:10px;padding:16px}
+  #sheet header h2{margin:0;font-size:28px;font-weight:700;flex:1}
+  .close{border:0;background:none;color:#0a84ff;font-size:26px;line-height:1;padding:6px}
+  .cats{overflow-y:auto;padding:0 16px 24px;display:flex;flex-direction:column;gap:12px}
+  .cat{background:rgba(255,255,255,.08);border-radius:16px;padding:16px;position:relative}
+  .cat b{display:block;text-align:center;font-size:17px;margin-bottom:10px}
+  .cat .dot{position:absolute;right:14px;top:14px;width:8px;height:8px;border-radius:50%;background:#ff453a}
+  .cat .row{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none}
+  .cat .row::-webkit-scrollbar{display:none}
+  .card{flex:0 0 168px;background:rgba(255,255,255,.06);border-radius:14px;padding:12px;text-align:center}
+  .card img{width:100%;height:110px;object-fit:contain;display:block}
+  .card b{display:block;font-size:15px;margin:8px 0}
+  .card .buy{width:100%;background:#ffd60a;color:#000;border:0;border-radius:10px;padding:11px;font:600 14px/1 inherit}
+  .card.locked{opacity:.45}
+
+  /* ─── конфетти ─── */
+  #confetti{position:fixed;inset:0;z-index:45;pointer-events:none;overflow:hidden;display:none}
+  #confetti.on{display:block}
+  #confetti span{position:absolute;width:9px;height:14px;border-radius:2px;animation:fall 1.5s ease-out forwards}
+  @keyframes fall{
+    0%{transform:translate(0,0) rotate(0);opacity:1}
+    100%{transform:translate(var(--dx),110vh) rotate(720deg);opacity:0}
+  }
+
+  /* ─── экран здания ─── */
   #screen{position:fixed;inset:0;z-index:50;background:#000;display:none}
   #screen.on{display:block}
   #screen .back{position:fixed;left:8px;top:44px;z-index:60;border:0;background:none;
-    color:#0a84ff;font:300 26px/24px inherit;cursor:pointer;padding:8px}
+    color:#0a84ff;font:300 26px/24px inherit;padding:8px}
+
+  #hintline{position:fixed;left:16px;right:16px;bottom:96px;z-index:20;text-align:center;
+    font-size:13px;text-shadow:0 1px 4px rgba(0,0,0,.8);pointer-events:none}
 </style>
 </head>
 <body>
 
-<div id="viewport">
-  <div id="canvas">
-    <img class="base" src="../assets/map/map-base.png" alt="">
-  </div>
-</div>
+<div id="viewport"><div id="canvas"><img class="base" src="../assets/map/map-base.png" alt=""></div></div>
 
 <div id="bar">
-  <h1>Ферма</h1>
+  <div class="money">
+    <span class="pill"><i class="i-gem"></i>500</span>
+    <span class="pill"><i class="i-coin"></i><b id="coins">5 000</b></span>
+  </div>
+  <span class="grow"></span>
   <button class="pill" id="reset">сброс</button>
 </div>
+
 <div id="hintline"></div>
+
+<div id="dock">
+  <button class="primary" id="openSheet">🔨 Постройки</button>
+</div>
+
+<div id="sheet">
+  <header><h2>Постройки</h2><button class="close">✕</button></header>
+  <div class="cats" id="cats"></div>
+</div>
+
+<div id="confetti"></div>
 
 <div id="screen"><button class="back" aria-label="Назад">‹</button><div id="app"></div></div>
 
@@ -79,155 +142,274 @@
 <script>
 'use strict';
 
-/* ═══════════ ЧТО ЕСТЬ НА КАРТЕ ═══════════
-   Координаты — точки на картинке карты 922×1200.
-   state: locked (не открыто) | free (можно строить) | building | ready   */
+/* ═══════════ ДАННЫЕ ═══════════ */
 
-const BUILD_MS = 5000;          // сколько идёт стройка
+const BUILD_MS = 3000;                 // стройка идёт 3 секунды
 
-const SLOTS = [
-  { id:'generator', name:'Генератор', icon:'🌱', x:285, y:880,
-    state:'ready', art:null, opens:'generator' },      // уже нарисован на карте
-  { id:'barn',      name:'Амбар',     icon:'🏚', x:612, y:840,
-    state:'free',  art:'../assets/map/building-barn.png' },
-  { id:'store',     name:'Склад',     icon:'📦', x:150, y:520,
-    state:'free',  art:'../assets/map/building-generator.png' },
-  { id:'workshop',  name:'Мастерская',icon:'🔧', x:735, y:1075,
-    state:'locked', art:'../assets/map/building-generator.png' },
+const CATALOG = [
+  { cat:'Преобразователи', items:[
+      { id:'coffee', name:'Кофейня', price:2000, art:'../assets/map/building-barn.png', opens:'generator' },
+      { id:'plant',  name:'Завод',   price:3500, art:'../assets/map/building-generator.png', opens:'generator' },
+  ]},
+  { cat:'Дома', items:[
+      { id:'house', name:'Домик', price:1200, art:'../assets/map/building-barn.png', locked:true },
+  ]},
+  { cat:'Декор', items:[
+      { id:'tree', name:'Дерево', price:300, art:'../assets/map/building-barn.png', locked:true },
+  ]},
+];
+const itemById = id => CATALOG.flatMap(c => c.items).find(i => i.id === id);
+
+/* свободные плитки: куда вообще можно ставить */
+const PLOTS = [
+  { id:'p1', x:150, y:520 },
+  { id:'p2', x:612, y:840 },
+  { id:'p3', x:735, y:1075 },
+  { id:'p4', x:430, y:1010 },
 ];
 
-const KEY = 'farm-map-v1';
-let slots = load();
+const KEY = 'farm-map-v2';
+let coins = 5000;
+let built = {};        // plotId → { itemId, state:'building'|'gift'|'ready', endsAt, flip }
 
+function save(){ localStorage.setItem(KEY, JSON.stringify({coins, built})); }
 function load(){
   try{
-    const saved = JSON.parse(localStorage.getItem(KEY));
-    if(!Array.isArray(saved)) throw 0;
-    return SLOTS.map(s => ({ ...s, ...(saved.find(x => x.id === s.id) || {}) }));
-  }catch{ return SLOTS.map(s => ({ ...s })); }
+    const r = JSON.parse(localStorage.getItem(KEY));
+    if(r && typeof r === 'object'){ coins = r.coins ?? 5000; built = r.built || {}; }
+  }catch{}
 }
-const save = () => localStorage.setItem(KEY,
-  JSON.stringify(slots.map(({id, state, endsAt}) => ({id, state, endsAt}))));
+load();
 
-/* ═══════════ ОТРИСОВКА ═══════════ */
+/* ═══════════ ОТРИСОВКА КАРТЫ ═══════════ */
 
 const canvas = document.getElementById('canvas');
 const hintline = document.getElementById('hintline');
-const els = {};
+const coinsEl = document.getElementById('coins');
+const plotEls = {};
 
-function build(){
-  slots.forEach(s => {
+function buildPlots(){
+  PLOTS.forEach(p => {
     const el = document.createElement('div');
-    el.className = 'slot';
-    el.style.left = s.x + 'px';
-    el.style.top  = s.y + 'px';
-    el.dataset.id = s.id;
-    el.innerHTML = '<div class="plate"></div><div class="art"></div>' +
-                   '<div class="badge"></div><div class="bar"><i></i></div>';
+    el.className = 'plot';
+    el.style.left = p.x + 'px';
+    el.style.top = p.y + 'px';
+    el.dataset.id = p.id;
+    el.innerHTML = '<div class="pad"></div><div class="art"></div>';
     canvas.appendChild(el);
-    els[s.id] = el;
+    plotEls[p.id] = el;
   });
   paintAll();
 }
 
-function paint(s){
-  const el = els[s.id];
-  el.dataset.state = s.state;
+function paintPlot(p){
+  const el = plotEls[p.id];
+  const b = built[p.id];
+  el.querySelectorAll('.chip,.label,.scaffold,.gift').forEach(n => n.remove());
   const art = el.querySelector('.art');
-  const badge = el.querySelector('.badge');
-  const bar = el.querySelector('.bar');
 
-  art.innerHTML = (s.state === 'ready' && s.art) ? `<img src="${s.art}" alt="">` : '';
-  bar.style.display = s.state === 'building' ? '' : 'none';
+  if(!b){ el.dataset.state = 'free'; art.innerHTML = ''; return; }
 
-  if(s.state === 'locked')        badge.innerHTML = `<span class="icon">🔒</span>${s.name}`;
-  else if(s.state === 'free')     badge.innerHTML = `<span class="icon">➕</span>Построить`;
-  else if(s.state === 'building') badge.innerHTML = '';
-  else                            badge.innerHTML = `<span class="icon">${s.icon}</span>${s.name}`;
+  const item = itemById(b.itemId);
+  el.dataset.state = b.state;
+  art.innerHTML = b.state === 'gift' ? '' : `<img src="${item.art}" alt=""
+      style="transform:scaleX(${b.flip ? -1 : 1})">`;
+
+  if(b.state === 'building'){
+    el.insertAdjacentHTML('beforeend', '<div class="scaffold"></div><div class="chip">🕐 …</div>');
+  } else if(b.state === 'gift'){
+    el.insertAdjacentHTML('beforeend', '<div class="gift"></div><div class="chip unlock">🔓</div>');
+  } else {
+    el.insertAdjacentHTML('beforeend', `<div class="label">${item.name}</div>`);
+  }
 }
-const paintAll = () => slots.forEach(paint);
+const paintAll = () => { PLOTS.forEach(paintPlot); coinsEl.textContent = coins.toLocaleString('ru'); };
 
-/* ═══════════ ДЕЙСТВИЯ ═══════════ */
+/* ═══════════ ТАЙМЕР СТРОЙКИ ═══════════ */
+
+setInterval(() => {
+  const now = Date.now();
+  Object.entries(built).forEach(([pid, b]) => {
+    if(b.state !== 'building') return;
+    const left = b.endsAt - now;
+    if(left <= 0){
+      b.state = 'gift';                 // достроилось — но сперва надо раскрыть
+      paintPlot(PLOTS.find(p => p.id === pid));
+      save();
+    } else {
+      const chip = plotEls[pid].querySelector('.chip');
+      if(chip){
+        const s = Math.ceil(left / 1000);
+        chip.textContent = `🕐 ${Math.floor(s/60)} мин ${s%60} сек`;
+      }
+    }
+  });
+}, 100);
+
+/* ═══════════ РЕЖИМ РАЗМЕЩЕНИЯ ═══════════ */
+
+let placing = null;    // { itemId, plotId, flip }
+
+function startPlacing(itemId){
+  const item = itemById(itemId);
+  if(coins < item.price) return say('Не хватает монет');
+  closeSheet();
+  placing = { itemId, plotId: PLOTS.find(p => !built[p.id])?.id, flip:false };
+  if(!placing.plotId){ placing = null; return say('Свободных мест нет'); }
+  document.body.classList.add('placing');
+  renderPlacing();
+}
+
+function renderPlacing(){
+  const item = itemById(placing.itemId);
+  PLOTS.forEach(p => {
+    const el = plotEls[p.id];
+    el.classList.toggle('pick', p.id === placing.plotId);
+    if(built[p.id]) return;
+    el.querySelector('.art').innerHTML = p.id === placing.plotId
+      ? `<img src="${item.art}" alt="" style="opacity:.85;transform:scaleX(${placing.flip ? -1 : 1})">`
+      : '';
+  });
+  dock.innerHTML =
+    `<button class="square" id="cancel">✕</button>
+     <button class="primary" id="confirm">Построить за ${item.price.toLocaleString('ru')}</button>
+     <button class="square" id="flip">↻</button>`;
+  say('Выбери место на карте');
+}
+
+function stopPlacing(){
+  placing = null;
+  document.body.classList.remove('placing');
+  dock.innerHTML = '<button class="primary" id="openSheet">🔨 Постройки</button>';
+  paintAll();
+}
+
+const dock = document.getElementById('dock');
+dock.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if(!b) return;
+  if(b.id === 'openSheet') return openSheet();
+  if(b.id === 'cancel')    return stopPlacing();
+  if(b.id === 'flip'){ placing.flip = !placing.flip; return renderPlacing(); }
+  if(b.id === 'confirm'){
+    const item = itemById(placing.itemId);
+    coins -= item.price;
+    built[placing.plotId] = { itemId:item.id, state:'building', endsAt:Date.now()+BUILD_MS, flip:placing.flip };
+    stopPlacing();
+    save();
+    say(`${item.name} строится`);
+  }
+});
+
+/* ═══════════ ТАПЫ ПО КАРТЕ ═══════════ */
 
 canvas.addEventListener('click', e => {
-  // флаг сбрасываем сразу: иначе он остаётся висеть после перетаскивания
-  // и съедает следующий тап
-  const wasPanned = panned;
-  panned = false;
+  const wasPanned = panned; panned = false;
   if(wasPanned) return;
 
-  const el = e.target.closest('.slot');
+  const el = e.target.closest('.plot');
   if(!el) return;
-  const s = slots.find(x => x.id === el.dataset.id);
+  const pid = el.dataset.id;
 
-  if(s.state === 'locked') return say(`${s.name} откроется позже`);
-  if(s.state === 'free'){
-    s.state = 'building';
-    s.endsAt = Date.now() + BUILD_MS;
-    paint(s); save();
-    say(`${s.name} строится…`);
+  if(placing){                            // выбираем плитку под здание
+    if(!built[pid]){ placing.plotId = pid; renderPlacing(); }
     return;
   }
-  if(s.state === 'building') return say('Ещё строится');
-  if(s.opens === 'generator') return openGenerator();
-  say(`${s.name}: экран пока не сделан`);
+
+  const b = built[pid];
+  if(!b) return say('Строить можно через кнопку «Постройки»');
+  if(b.state === 'building') return say('Ещё строится');
+  if(b.state === 'gift')     return unwrap(pid);
+  const item = itemById(b.itemId);
+  if(item.opens === 'generator') return openGenerator();
+  say(`${item.name}: экран пока не сделан`);
 });
+
+/* раскрываем подарок → конфетти → здание готово */
+function unwrap(pid){
+  built[pid].state = 'ready';
+  paintPlot(PLOTS.find(p => p.id === pid));
+  save();
+  confetti();
+  say(`${itemById(built[pid].itemId).name} построен`);
+}
+
+function confetti(){
+  const box = document.getElementById('confetti');
+  const colors = ['#ffd60a','#ff453a','#0a84ff','#30d158','#ff9f0a','#bf5af2'];
+  box.innerHTML = '';
+  for(let i = 0; i < 40; i++){
+    const s = document.createElement('span');
+    s.style.left = (10 + Math.random()*80) + 'vw';
+    s.style.top = (10 + Math.random()*25) + 'vh';
+    s.style.background = colors[i % colors.length];
+    s.style.setProperty('--dx', (Math.random()*160 - 80) + 'px');
+    s.style.animationDelay = (Math.random()*.35) + 's';
+    box.appendChild(s);
+  }
+  box.classList.add('on');
+  setTimeout(() => box.classList.remove('on'), 2200);
+}
+
+/* ═══════════ КАТАЛОГ ═══════════ */
+
+const sheet = document.getElementById('sheet');
+function openSheet(){
+  const cats = document.getElementById('cats');
+  cats.innerHTML = CATALOG.map(c => `
+    <div class="cat">
+      <span class="dot"></span>
+      <b>${c.cat}</b>
+      <div class="row">
+        ${c.items.map(i => `
+          <div class="card ${i.locked ? 'locked' : ''}">
+            <img src="${i.art}" alt="">
+            <b>${i.name}</b>
+            <button class="buy" data-item="${i.id}" ${i.locked ? 'disabled' : ''}>
+              ${i.locked ? '🔒 закрыто' : i.price.toLocaleString('ru') + ' 🪙'}
+            </button>
+          </div>`).join('')}
+      </div>
+    </div>`).join('');
+  sheet.classList.add('on');
+}
+const closeSheet = () => sheet.classList.remove('on');
+sheet.addEventListener('click', e => {
+  if(e.target.closest('.close')) return closeSheet();
+  const buy = e.target.closest('[data-item]');
+  if(buy) startPlacing(buy.dataset.item);
+});
+
+/* ═══════════ ПОДСКАЗКА ═══════════ */
 
 let sayTimer;
 function say(text){
   hintline.textContent = text;
   clearTimeout(sayTimer);
-  sayTimer = setTimeout(() => { hintline.textContent = ''; }, 2200);
+  sayTimer = setTimeout(() => { hintline.textContent = ''; }, 2400);
 }
-
-/* стройка идёт по таймеру, как генерация на грядках */
-setInterval(() => {
-  const now = Date.now();
-  slots.forEach(s => {
-    if(s.state !== 'building') return;
-    const left = s.endsAt - now;
-    if(left <= 0){
-      s.state = 'ready';
-      paint(s); save();
-      say(`${s.name} построен`);
-    } else {
-      els[s.id].querySelector('.bar i').style.width =
-        (100 * (1 - left / BUILD_MS)).toFixed(1) + '%';
-    }
-  });
-}, 100);
 
 /* ═══════════ ПЕРЕТАСКИВАНИЕ КАРТЫ ═══════════ */
 
 const viewport = document.getElementById('viewport');
 const MAP_W = 922, MAP_H = 1200;
-let scale = 1, ox = 0, oy = 0;
-let drag = null, panned = false;
+let scale = 1, ox = 0, oy = 0, drag = null, panned = false;
 
-function clamp(){
-  const w = MAP_W * scale, h = MAP_H * scale;
-  // карта не уезжает от края: если она меньше экрана — центрируем
-  ox = w <= innerWidth  ? (innerWidth  - w) / 2 : Math.min(0, Math.max(innerWidth  - w, ox));
-  oy = h <= innerHeight ? (innerHeight - h) / 2 : Math.min(0, Math.max(innerHeight - h, oy));
-}
 function apply(){
-  clamp();
+  const w = MAP_W*scale, h = MAP_H*scale;
+  ox = w <= innerWidth  ? (innerWidth  - w)/2 : Math.min(0, Math.max(innerWidth  - w, ox));
+  oy = h <= innerHeight ? (innerHeight - h)/2 : Math.min(0, Math.max(innerHeight - h, oy));
   canvas.style.transform = `translate(${ox}px, ${oy}px) scale(${scale})`;
 }
 function fit(){
-  // карта заполняет экран целиком, лишнее уходит за края
-  scale = Math.max(innerWidth / MAP_W, innerHeight / MAP_H);
-  ox = (innerWidth  - MAP_W * scale) / 2;
-  oy = (innerHeight - MAP_H * scale) / 2;
+  scale = Math.max(innerWidth/MAP_W, innerHeight/MAP_H);
+  ox = (innerWidth - MAP_W*scale)/2;
+  oy = (innerHeight - MAP_H*scale)/2;
   apply();
 }
 addEventListener('resize', fit);
 
-viewport.addEventListener('pointerdown', e => {
-  drag = { x:e.clientX, y:e.clientY, ox, oy };
-  panned = false;
-  viewport.classList.add('dragging');
-});
+viewport.addEventListener('pointerdown', e => { drag = {x:e.clientX, y:e.clientY, ox, oy}; panned = false; });
 addEventListener('pointermove', e => {
   if(!drag) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
@@ -235,34 +417,28 @@ addEventListener('pointermove', e => {
   ox = drag.ox + dx; oy = drag.oy + dy;
   apply();
 });
-addEventListener('pointerup', () => { drag = null; viewport.classList.remove('dragging'); });
-addEventListener('pointercancel', () => { drag = null; viewport.classList.remove('dragging'); });
+addEventListener('pointerup',     () => { drag = null; });
+addEventListener('pointercancel', () => { drag = null; });
 
 /* ═══════════ ЭКРАН ЗДАНИЯ ═══════════ */
 
 const screen = document.getElementById('screen');
 let gen = null;
-
 function openGenerator(){
   screen.classList.add('on');
-  if(!gen){
-    gen = createGenerator(document.getElementById('app'), {
-      assets: '../assets',
-      storeKey: 'farm-map-generator'
-    });
-  }
-  dispatchEvent(new Event('resize'));   // модуль пересчитает масштаб под экран
+  if(!gen) gen = createGenerator(document.getElementById('app'),
+    { assets:'../assets', storeKey:'farm-map-generator' });
+  dispatchEvent(new Event('resize'));
 }
 screen.querySelector('.back').addEventListener('click', () => screen.classList.remove('on'));
 
 document.getElementById('reset').addEventListener('click', () => {
-  slots = SLOTS.map(s => ({ ...s }));
-  save(); paintAll(); say('Карта сброшена');
+  coins = 5000; built = {}; save(); stopPlacing(); paintAll(); say('Карта сброшена');
 });
 
-build();
+buildPlots();
 fit();
-say('Тапни площадку, чтобы построить');
+say('Жми «Постройки», чтобы начать');
 </script>
 </body>
 </html>
