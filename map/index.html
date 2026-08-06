@@ -92,6 +92,79 @@
   #screen .back{position:fixed;left:8px;top:44px;z-index:60;border:0;background:none;
     color:#0a84ff;font:300 26px/24px inherit;padding:8px}
 
+
+  /* ─── подсказки внутри генератора ─── */
+  #genSpeech{position:fixed;left:16px;right:16px;z-index:70;display:none;align-items:flex-start;gap:12px;
+    pointer-events:none}
+  #genSpeech.on{display:flex}
+  #genSpeech img{flex:0 0 auto;width:66px;height:66px;object-fit:contain}
+  #genSpeech .b{background:#3a3a3c;border-radius:18px;padding:14px 16px;font-size:16px;line-height:1.3;
+    font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+
+  #genDemo{position:fixed;inset:0;z-index:69;pointer-events:none;display:none}
+  #genDemo.on{display:block}
+  #genDemo path{stroke:#ffd60a;stroke-width:5;stroke-dasharray:12 10;stroke-linecap:round;fill:none}
+  #genDemo polygon{fill:#ffd60a}
+  #genDemo .runner{position:absolute;left:0;top:0;width:60px;height:60px;margin:-30px 0 0 -30px;
+    offset-rotate:0deg;animation:ride 3.2s cubic-bezier(.5,0,.5,1) infinite}
+  #genDemo .runner img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 6px 12px rgba(0,0,0,.6))}
+  @keyframes ride{
+    0%{offset-distance:0%;opacity:0;transform:scale(.75)}
+    8%{opacity:1;transform:scale(1)}
+    88%{offset-distance:100%;opacity:1;transform:scale(1)}
+    100%{offset-distance:100%;opacity:0;transform:scale(.75)}}
+
+  #boostTip{position:fixed;z-index:71;display:none;transform:translate(-50%,0)}
+  #boostTip.on{display:block}
+  #boostTip .box{background:#428bf9;border-radius:16px;padding:12px 14px;min-width:150px;text-align:center;
+    box-shadow:0 10px 26px rgba(0,0,0,.5);position:relative}
+  #boostTip .box b{display:block;font-size:16px;font-weight:700;margin-bottom:8px}
+  #boostTip .time{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.18);
+    border-radius:100px;padding:5px 10px;font-size:13px;font-weight:500}
+  #boostTip .boost{display:block;width:100%;margin-top:8px;background:#ffd60a;color:#000;border:0;
+    border-radius:100px;padding:9px 12px;font:600 14px/1 inherit}
+  #boostTip .nose{position:absolute;left:50%;top:-7px;transform:translateX(-50%) rotate(45deg);
+    width:14px;height:14px;background:#428bf9;border-radius:3px}
+
+  #level{position:fixed;inset:0;z-index:80;background:#000;display:none;flex-direction:column;
+    align-items:center;padding:64px 20px 34px}
+  #level.on{display:flex}
+  #level .num{width:96px;height:96px;border-radius:50%;background:#3a3a3c;display:grid;place-items:center;
+    font-size:40px;font-weight:700;margin-top:70px}
+  #level h2{margin:24px 0 0;font-size:30px;font-weight:700}
+  #level .reward{margin-top:10px;color:#8e8e93;font-size:15px;display:flex;align-items:center;gap:8px}
+  #level .reward b{background:rgba(255,255,255,.12);border-radius:100px;padding:6px 12px;color:#fff;font-size:14px}
+  #level .got{margin-top:44px;color:#8e8e93;font-size:14px}
+  #level .items{display:flex;gap:12px;margin-top:12px}
+  #level .items div{width:64px;height:64px;border-radius:12px;background:rgba(255,255,255,.1);
+    display:grid;place-items:center;font-size:30px}
+  #level .take{margin-top:auto;width:100%;background:#ffd60a;color:#000;border:0;border-radius:14px;
+    padding:17px;font:600 16px/1 inherit}
+
+  /* ═══ сюжетный слой онбординга ═══ */
+  #story{position:fixed;left:0;right:0;bottom:0;z-index:60;display:none;padding:0 12px 22px}
+  #story.on{display:block}
+  #story .who{position:relative;display:flex;align-items:flex-end;gap:0;margin-left:4px}
+  #story .who img{height:150px;width:auto;display:block;filter:drop-shadow(0 8px 18px rgba(0,0,0,.5))}
+  #story .who .name{position:absolute;left:14px;bottom:-8px;border-radius:8px;padding:4px 10px;
+    font:700 13px/1 inherit;color:#fff}
+  #story .who .name.grandson{background:#d5341f}
+  #story .who .name.granny{background:#7b5cff}
+  #story .bubble{margin-top:14px;background:#1c1c1e;border-radius:18px;padding:16px 18px 20px;
+    font-size:16px;line-height:1.35;font-weight:500;position:relative;box-shadow:0 10px 30px rgba(0,0,0,.6)}
+  #story .bubble .next{position:absolute;right:14px;bottom:8px;color:#ffd60a;font-size:12px}
+
+  /* стрелка-указатель на элемент интерфейса */
+  #point{position:fixed;z-index:62;display:none;font-size:44px;color:#ffd60a;pointer-events:none;
+    filter:drop-shadow(0 4px 10px rgba(0,0,0,.5))}
+  #point.on{display:block;animation:pnudge .9s ease-in-out infinite}
+  @keyframes pnudge{0%,100%{transform:translate(0,0)}50%{transform:translate(0,10px)}}
+
+  /* зёрна улетают за экран после ускорения */
+  .flyaway{position:fixed;z-index:75;width:44px;height:44px;pointer-events:none;
+    animation:flyoff .7s cubic-bezier(.4,0,.7,1) forwards}
+  @keyframes flyoff{to{transform:translate(60vw,-70vh) scale(.35);opacity:0}}
+
   #hintline{position:fixed;left:16px;right:16px;bottom:96px;z-index:20;text-align:center;
     font-size:13px;text-shadow:0 1px 4px rgba(0,0,0,.8);pointer-events:none}
 </style>
@@ -122,7 +195,37 @@
 
 <div id="confetti"></div>
 
-<div id="screen"><button class="back" aria-label="Назад">‹</button><div id="app"></div></div>
+<div id="story">
+  <div class="who"><img alt=""><span class="name"></span></div>
+  <div class="bubble"><span class="text"></span><span class="next">▼</span></div>
+</div>
+<div id="point">⬇</div>
+
+<div id="screen">
+  <button class="back" aria-label="Назад">‹</button>
+  <div id="app"></div>
+
+  <div id="genSpeech"><img alt=""><div class="b"></div></div>
+  <div id="genDemo"></div>
+
+  <div id="boostTip">
+    <div class="box">
+      <span class="nose"></span>
+      <b>Кофе</b>
+      <span class="time">🕐 ещё 29 сек</span>
+      <button class="boost">🪙 Бесплатно</button>
+    </div>
+  </div>
+
+  <div id="level">
+    <div class="num">2</div>
+    <h2>Новый уровень</h2>
+    <div class="reward">Заберите награду: <b>🪙 93</b></div>
+    <div class="got">Теперь вам доступны</div>
+    <div class="items"><div>🌾</div><div>🍌</div></div>
+    <button class="take">Забрать награду</button>
+  </div>
+</div>
 
 <script src="../shared/generator/generator.js"></script>
 <script>
@@ -134,6 +237,7 @@ const BUILD_MS = 3000;                 // стройка идёт 3 секунд
 
 const CATALOG = [
   { cat:'Преобразователи', items:[
+      { id:'gen', name:'Генератор', price:0, opens:'generator', art:'', hidden:true },
       { id:'coffee', name:'Кофейня', price:2000, opens:'generator',
         art:'../assets/map/Cafe.png',
         artBuild:'../assets/map/Cafe-construction.png',
@@ -152,6 +256,7 @@ const itemById = id => CATALOG.flatMap(c => c.items).find(i => i.id === id);
 
 /* свободные плитки: куда вообще можно ставить */
 const PLOTS = [
+  { id:'p0', x:285, y:880 },      // генератор, стоит на карте изначально
   { id:'p1', x:150, y:520 },
   { id:'p2', x:612, y:840 },
   { id:'p3', x:735, y:1075 },
@@ -168,6 +273,8 @@ function load(){
     const r = JSON.parse(localStorage.getItem(KEY));
     if(r && typeof r === 'object'){ coins = r.coins ?? 5000; built = r.built || {}; }
   }catch{}
+  // генератор нарисован на самой карте — площадка нужна только чтобы по нему тапали
+  built.p0 = { itemId:'gen', state:'ready' };
 }
 load();
 
@@ -206,7 +313,7 @@ function paintPlot(p){
   const src = b.state === 'building' ? (item.artBuild || item.art)
             : b.state === 'gift'     ? (item.artGift  || item.art)
             : item.art;
-  art.innerHTML = `<img src="${src}" alt="" style="transform:scaleX(${b.flip ? -1 : 1})">`;
+  art.innerHTML = src ? `<img src="${src}" alt="" style="transform:scaleX(${b.flip ? -1 : 1})">` : '';
 
   if(b.state === 'building')  el.insertAdjacentHTML('beforeend', '<div class="chip">🕐 …</div>');
   else if(b.state === 'gift') el.insertAdjacentHTML('beforeend', '<div class="chip unlock">🔓</div>');
@@ -247,6 +354,7 @@ function startPlacing(itemId){
   if(!placing.plotId){ placing = null; return say('Свободных мест нет'); }
   document.body.classList.add('placing');
   renderPlacing();
+  scFire('placing');
 }
 
 function renderPlacing(){
@@ -320,6 +428,7 @@ function unwrap(pid){
   paintPlot(PLOTS.find(p => p.id === pid));
   save();
   confetti();
+  scFire('built');
   say(`${itemById(built[pid].itemId).name} построен`);
 }
 
@@ -344,13 +453,14 @@ function confetti(){
 
 const sheet = document.getElementById('sheet');
 function openSheet(){
+  scFire('sheetOpened');
   const cats = document.getElementById('cats');
   cats.innerHTML = CATALOG.map(c => `
     <div class="cat">
       <span class="dot"></span>
       <b>${c.cat}</b>
       <div class="row">
-        ${c.items.map(i => `
+        ${c.items.filter(i => !i.hidden).map(i => `
           <div class="card ${i.locked ? 'locked' : ''}">
             <img src="${i.art}" alt="">
             <b>${i.name}</b>
@@ -412,12 +522,19 @@ addEventListener('pointercancel', () => { drag = null; });
 /* ═══════════ ЭКРАН ЗДАНИЯ ═══════════ */
 
 const screen = document.getElementById('screen');
-let gen = null;
+
+// генератор создаётся сразу: онбординг подписывается на его события
+const gen0 = createGenerator(document.getElementById('app'), {
+  assets:'../assets', storeKey:'farm-onb-generator',
+  mode:'single', cells:5, unlocked:['coffee'], chrome:false, dim:true
+});
+gen0.reset();
+const gen = gen0;
+
 function openGenerator(){
   screen.classList.add('on');
-  if(!gen) gen = createGenerator(document.getElementById('app'),
-    { assets:'../assets', storeKey:'farm-map-generator' });
   dispatchEvent(new Event('resize'));
+  scFire('generatorOpened');
 }
 screen.querySelector('.back').addEventListener('click', () => screen.classList.remove('on'));
 
@@ -425,9 +542,235 @@ document.getElementById('reset').addEventListener('click', () => {
   coins = 5000; built = {}; save(); stopPlacing(); paintAll(); say('Карта сброшена');
 });
 
+
+
+/* ═══════════════════════════════════════════════════════════════
+   ОНБОРДИНГ: сплошной сценарий от первого захода до кофейни.
+
+   Живёт на карте, потому что здесь уже есть и постройка, и вход
+   в генератор — иначе флоу разорвался бы между страницами.
+
+   Шаг описывает: кто говорит, что говорит, куда смотрит камера,
+   на что показывает стрелка и чего ждём от человека.
+   ═══════════════════════════════════════════════════════════════ */
+
+const story    = document.getElementById('story');
+const storyImg = story.querySelector('.who img');
+const storyName= story.querySelector('.name');
+const storyText= story.querySelector('.text');
+const point    = document.getElementById('point');
+
+const CAST = {
+  grandson: { name:'Внучара', img:'../assets/onboarding/Maloy.png',  cls:'grandson' },
+  granny:   { name:'Бабуся',  img:'../assets/onboarding/Granny.png', cls:'granny' },
+};
+
+const SCRIPT = [
+  { who:'grandson', text:'Приехал с города, а в деревне минус вайб — нет моей любимой латте на безлактозном молоке' },
+  { who:'granny',   text:'А ты че думал, шегол? В деревне не все так просто, тут нужно со знанием дела, по совести, без суеты бэм бэм…' },
+  { who:'grandson', text:'Очень хочется кофе, кажется бабуся говорила нужно начать с кофейных зерен? Как их там делать то?' },
+
+  // камера подъезжает к генератору, над ним стрелка
+  { who:'grandson', text:'Дядь Вася хочет кофейное зерно, давай разберемся как достать зерно',
+    focus:'generator', pointAt:'.plot[data-id="p0"]', wait:'generatorOpened' },
+
+  // ── внутри генератора ──
+  { gen:'seed' },
+  { gen:'boost' },
+  { gen:'level' },
+
+  // ── обратно на карту ──
+  { who:'granny', text:'Давно была в деревне кофейня но мы чет забросили ее давай восстановим посмотрим что там',
+    focus:'oldman' },
+  { who:'grandson', text:'Нам нужна кофейня давай строить',
+    pointAt:'#openSheet', wait:'sheetOpened' },
+  { pointAt:'[data-item="coffee"]', wait:'placing' },
+  { text:'Выбери место и подтверди', wait:'built' },
+  { who:'grandson', text:'СКОРЕЕ сделаем кофе я хочу латте на безлактозном' },
+];
+
+let sc = -1, scWait = null;
+
+function scNext(){
+  sc++;
+  point.classList.remove('on');
+  if(sc >= SCRIPT.length){ story.classList.remove('on'); scWait = null; return; }
+  const st = SCRIPT[sc];
+
+  if(st.gen){ story.classList.remove('on'); return genStep(st.gen); }
+
+  if(st.who){
+    const c = CAST[st.who];
+    storyImg.src = c.img;
+    storyName.textContent = c.name;
+    storyName.className = 'name ' + c.cls;
+    story.querySelector('.who').style.display = '';
+  } else {
+    story.querySelector('.who').style.display = 'none';
+  }
+  storyText.textContent = st.text || '';
+  story.classList.add('on');
+
+  if(st.focus) focusOn(st.focus);
+  if(st.pointAt) setTimeout(() => pointTo(st.pointAt), st.focus ? 700 : 60);
+
+  scWait = st.wait || null;
+  story.querySelector('.next').style.display = scWait ? 'none' : '';
+}
+
+/* по тапу листаем только те шаги, которые ничего не ждут */
+story.addEventListener('click', () => { if(!scWait) scNext(); });
+
+/* ─── камера ─── */
+
+function focusOn(what){
+  const target = what === 'generator' ? {x:285, y:880} : {x:470, y:660};
+  const z = 1.35;
+  const from = {s:scale, x:ox, y:oy};
+  const to = { s:z, x: innerWidth/2 - target.x*z, y: innerHeight/2 - target.y*z };
+  const t0 = performance.now();
+  (function tick(now){
+    const k = Math.min(1, (now - t0)/650);
+    const e = 1 - Math.pow(1 - k, 3);
+    scale = from.s + (to.s - from.s)*e;
+    ox = from.x + (to.x - from.x)*e;
+    oy = from.y + (to.y - from.y)*e;
+    apply();
+    if(k < 1) requestAnimationFrame(tick);
+  })(t0);
+}
+
+/* ─── стрелка на элемент ─── */
+
+function pointTo(sel){
+  const el = document.querySelector(sel);
+  if(!el) return;
+  const r = el.getBoundingClientRect();
+  point.style.left = (r.left + r.width/2 - 22) + 'px';
+  point.style.top  = Math.max(60, r.top - 58) + 'px';
+  point.classList.add('on');
+}
+
+/* ─── сценарий внутри генератора ─── */
+
+function genStep(kind){
+  if(kind === 'seed'){
+    genBubble('Давай посадим наши первые кофейные зерна', true);
+    genWait = 'allSeeded';
+  } else if(kind === 'boost'){
+    genBubble('Жаль невозможно вернуть 2007 год нажатием кнопки', false);
+    showBoostTip();
+    genWait = 'boosted';
+  } else if(kind === 'level'){
+    showLevel();
+  }
+}
+
+/* ─── что ждём ─── */
+
+function scFire(ev){
+  if(scWait === ev){ scWait = null; scNext(); }
+}
+
+
+/* ═══ подсказки внутри генератора ═══
+   Пунктир и стрелки из статичного макета не рисуем: движущегося
+   зерна с рукой достаточно, путь читается по самому движению. */
+
+const genSpeech = document.getElementById('genSpeech');
+const genDemo   = document.getElementById('genDemo');
+const boostTip  = document.getElementById('boostTip');
+const levelBox  = document.getElementById('level');
+let genWait = null;
+
+function genBubble(text, withDemo){
+  genSpeech.querySelector('img').src = '../assets/onboarding/avatar maloy-mini.png';
+  genSpeech.querySelector('.b').textContent = text;
+  const grid = document.querySelector('#app .block');
+  if(grid) genSpeech.style.top = Math.max(96, grid.getBoundingClientRect().top - 130) + 'px';
+  genSpeech.classList.add('on');
+  if(withDemo) drawGenDemo(); else genDemo.classList.remove('on');
+}
+function hideGenHint(){ genSpeech.classList.remove('on'); genDemo.classList.remove('on'); }
+
+/* зерно едет от лотка через весь ряд — путь невидимый, виден только жест */
+function drawGenDemo(){
+  const cells = [...document.querySelectorAll('#app .cell')];
+  const src = document.querySelector('#app .seed:not(.locked)');
+  if(!src || !cells.length) return;
+  const rs = src.getBoundingClientRect();
+  const f = cells[0].getBoundingClientRect();
+  const l = cells[cells.length-1].getBoundingClientRect();
+  const x0 = rs.left + rs.width/2, y0 = rs.top + rs.height/2;
+  const y = f.top + f.height/2;
+  const x1 = f.left + f.width/2, x2 = l.left + l.width/2;
+  const d = `M ${x0} ${y0} C ${x0-60} ${y0-120}, ${x1-60} ${y+120}, ${x1} ${y} L ${x2} ${y}`;
+  genDemo.innerHTML = `<div class="runner" style="offset-path:path('${d}')">
+      <img src="../assets/imgcoffe.png" alt=""></div>`;
+  genDemo.classList.add('on');
+}
+
+/* подсказка уходит, только когда реально взяли зерно из лотка */
+document.getElementById('app').addEventListener('pointerdown', e => {
+  if(genWait && e.target.closest('.seed:not(.locked)')) hideGenHint();
+});
+
+function showBoostTip(){
+  const cells = [...document.querySelectorAll('#app .cell')];
+  const mid = cells[Math.floor(cells.length/2)];
+  if(!mid) return;
+  const r = mid.getBoundingClientRect();
+  boostTip.style.left = (r.left + r.width/2) + 'px';
+  boostTip.style.top  = (r.bottom + 14) + 'px';
+  boostTip.classList.add('on');
+}
+
+boostTip.querySelector('.boost').addEventListener('click', () => {
+  boostTip.classList.remove('on');
+  hideGenHint();
+  flyAwayBeans();
+  const cells = [...document.querySelectorAll('#app .cell')];
+  gen.setCells(cells.map((_, i) => ({ index:i, state:'empty' })));
+  genWait = null;
+  setTimeout(scNext, 800);
+});
+
+/* зёрна улетают вверх-вправо за экран, а не просто исчезают */
+function flyAwayBeans(){
+  // берём координаты ячейки, а не картинки внутри: у неё размер может быть нулевым
+  document.querySelectorAll('#app .cell').forEach((cell, i) => {
+    const img = cell.querySelector('img');
+    if(!img || img.hidden) return;
+    const r = cell.getBoundingClientRect();
+    if(!r.width) return;
+    const fly = document.createElement('img');
+    fly.src = img.src;
+    fly.className = 'flyaway';
+    fly.style.left = (r.left + r.width/2 - 22) + 'px';
+    fly.style.top  = (r.top + r.height/2 - 22) + 'px';
+    fly.style.animationDelay = (i * 55) + 'ms';
+    document.body.appendChild(fly);
+    setTimeout(() => fly.remove(), 1400);
+  });
+}
+
+function showLevel(){ hideGenHint(); levelBox.classList.add('on'); }
+
+// забрал награду — генератор закрывается сам, дальше сюжет на карте
+levelBox.querySelector('.take').addEventListener('click', () => {
+  levelBox.classList.remove('on');
+  screen.classList.remove('on');
+  scNext();
+});
+
+/* засеял весь ряд — сразу тултип ускорения, ждать не заставляем */
+gen0.on('change', st => {
+  if(genWait === 'allSeeded' && st.empty === 0){ genWait = null; scNext(); }
+});
+
 buildPlots();
 fit();
-say('Жми «Постройки», чтобы начать');
+scNext();
 </script>
 </body>
 </html>
