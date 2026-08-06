@@ -59,22 +59,34 @@
     font:600 16px/1 inherit;display:flex;align-items:center;justify-content:center;gap:8px}
   .square{width:56px;background:#ffd60a;color:#000;border:0;border-radius:14px;font-size:20px}
 
-  /* ─── каталог построек ─── */
+  /* ─── каталог построек: два экрана, как в макете ─── */
   #sheet{position:fixed;inset:0;z-index:40;background:#000;display:none;flex-direction:column}
   #sheet.on{display:flex}
-  #sheet header{display:flex;align-items:center;gap:10px;padding:16px}
-  #sheet header h2{margin:0;font-size:28px;font-weight:700;flex:1}
-  .close{border:0;background:none;color:#0a84ff;font-size:26px;line-height:1;padding:6px}
-  .cats{overflow-y:auto;padding:0 16px 24px;display:flex;flex-direction:column;gap:12px}
-  .cat{background:rgba(255,255,255,.08);border-radius:16px;padding:16px;position:relative}
-  .cat b{display:block;text-align:center;font-size:17px;margin-bottom:10px}
-  .cat .dot{position:absolute;right:14px;top:14px;width:8px;height:8px;border-radius:50%;background:#ff453a}
-  .cat .row{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none}
-  .cat .row::-webkit-scrollbar{display:none}
-  .card{flex:0 0 168px;background:rgba(255,255,255,.06);border-radius:14px;padding:12px;text-align:center}
-  .card img{width:100%;height:110px;object-fit:contain;display:block}
-  .card b{display:block;font-size:15px;margin:8px 0}
-  .card .buy{width:100%;background:#ffd60a;color:#000;border:0;border-radius:10px;padding:11px;font:600 14px/1 inherit}
+  .sheetTop{position:relative;flex:0 0 auto;padding:44px 16px 0}
+  .sheetTop .row{display:flex;align-items:center;gap:8px}
+  .sheetTop .back{border:0;background:none;color:#0a84ff;font:300 26px/24px inherit;padding:4px 10px 4px 0}
+  .sheetTop h2{margin:16px 0 0;font-size:34px;font-weight:700;letter-spacing:-.5px;color:rgba(255,255,255,.28)}
+
+  /* экран категорий */
+  #cats{flex:1;overflow-y:auto;padding:20px 16px 32px;display:flex;flex-direction:column;gap:16px}
+  .cat{position:relative;background:#1c1c1e;border-radius:20px;padding:20px 16px 24px;text-align:center}
+  .cat b{display:block;font-size:20px;font-weight:700;margin-bottom:14px}
+  .cat img{width:100%;height:190px;object-fit:contain;display:block}
+  .cat .dot{position:absolute;right:18px;top:18px;width:9px;height:9px;border-radius:50%;background:#ff453a}
+
+  /* экран одной категории: карусель зданий */
+  #items{flex:1;display:none;align-items:center;gap:14px;overflow-x:auto;padding:0 44px;
+    scroll-snap-type:x mandatory;scrollbar-width:none}
+  #items::-webkit-scrollbar{display:none}
+  #items.on{display:flex}
+  .card{flex:0 0 268px;scroll-snap-align:center;background:#1c1c1e;border-radius:22px;
+    padding:16px;text-align:center}
+  .card .n{display:inline-block;background:rgba(255,255,255,.12);border-radius:100px;
+    padding:5px 12px;font:600 13px/1 inherit;margin-bottom:10px}
+  .card b{display:block;font-size:22px;font-weight:700;margin-bottom:12px}
+  .card img{width:100%;height:210px;object-fit:contain;display:block;margin-bottom:16px}
+  .card .buy{width:100%;background:#ffd60a;color:#000;border:0;border-radius:14px;padding:15px;
+    font:600 17px/1 inherit;display:flex;align-items:center;justify-content:center;gap:8px}
   .card.locked{opacity:.45}
 
   /* ─── конфетти ─── */
@@ -189,8 +201,16 @@
 </div>
 
 <div id="sheet">
-  <header><h2>Постройки</h2><button class="close">✕</button></header>
-  <div class="cats" id="cats"></div>
+  <div class="sheetTop">
+    <div class="row">
+      <button class="back">‹</button>
+      <span class="pill"><i class="i-gem"></i>500</span>
+      <span class="pill"><i class="i-coin"></i><b id="coins2">5 000</b></span>
+    </div>
+    <h2 id="sheetTitle">Постройки</h2>
+  </div>
+  <div id="cats"></div>
+  <div id="items"></div>
 </div>
 
 <div id="confetti"></div>
@@ -205,6 +225,7 @@
   <button class="back" aria-label="Назад">‹</button>
   <div id="app"></div>
 
+</div>
   <div id="genSpeech"><img alt=""><div class="b"></div></div>
   <div id="genDemo"></div>
 
@@ -225,7 +246,7 @@
     <div class="items"><div>🌾</div><div>🍌</div></div>
     <button class="take">Забрать награду</button>
   </div>
-</div>
+
 
 <script src="../shared/generator/generator.js"></script>
 <script>
@@ -236,7 +257,7 @@
 const BUILD_MS = 3000;                 // стройка идёт 3 секунды
 
 const CATALOG = [
-  { cat:'Преобразователи', items:[
+  { cat:'Преобразователи', icon:'../assets/map/Cafe.png', items:[
       { id:'gen', name:'Генератор', price:0, opens:'generator', art:'', hidden:true },
       { id:'coffee', name:'Кофейня', price:2000, opens:'generator',
         art:'../assets/map/Cafe.png',
@@ -245,10 +266,10 @@ const CATALOG = [
       { id:'plant',  name:'Завод',   price:3500, art:'../assets/map/building-generator.png', opens:'generator' },
       { id:'orders', name:'Доска заказов', price:1500, art:'../assets/map/building-order board.png' },
   ]},
-  { cat:'Дома', items:[
+  { cat:'Дома', icon:'../assets/map/building-barn.png', items:[
       { id:'house', name:'Домик', price:1200, art:'../assets/map/building-barn.png', locked:true },
   ]},
-  { cat:'Декор', items:[
+  { cat:'Декор', icon:'../assets/map/building-order board.png', items:[
       { id:'tree', name:'Дерево', price:300, art:'../assets/map/building-barn.png', locked:true },
   ]},
 ];
@@ -452,29 +473,54 @@ function confetti(){
 /* ═══════════ КАТАЛОГ ═══════════ */
 
 const sheet = document.getElementById('sheet');
+const catsBox = document.getElementById('cats');
+const itemsBox = document.getElementById('items');
+let openCat = null;
+
 function openSheet(){
   scFire('sheetOpened');
-  const cats = document.getElementById('cats');
-  cats.innerHTML = CATALOG.map(c => `
-    <div class="cat">
+  openCat = null;
+  document.getElementById('sheetTitle').textContent = 'Постройки';
+  catsBox.style.display = '';
+  itemsBox.classList.remove('on');
+  catsBox.innerHTML = CATALOG.map(c => `
+    <div class="cat" data-cat="${c.cat}">
       <span class="dot"></span>
       <b>${c.cat}</b>
-      <div class="row">
-        ${c.items.filter(i => !i.hidden).map(i => `
-          <div class="card ${i.locked ? 'locked' : ''}">
-            <img src="${i.art}" alt="">
-            <b>${i.name}</b>
-            <button class="buy" data-item="${i.id}" ${i.locked ? 'disabled' : ''}>
-              ${i.locked ? '🔒 закрыто' : i.price.toLocaleString('ru') + ' 🪙'}
-            </button>
-          </div>`).join('')}
-      </div>
+      <img src="${c.icon}" alt="">
     </div>`).join('');
+  document.getElementById('coins2').textContent = coins.toLocaleString('ru');
   sheet.classList.add('on');
 }
-const closeSheet = () => sheet.classList.remove('on');
+
+function openCategory(name){
+  openCat = CATALOG.find(c => c.cat === name);
+  if(!openCat) return;
+  document.getElementById('sheetTitle').textContent = openCat.cat;
+  catsBox.style.display = 'none';
+  itemsBox.classList.add('on');
+  const list = openCat.items.filter(i => !i.hidden);
+  itemsBox.innerHTML = list.map((i, k) => `
+    <div class="card ${i.locked ? 'locked' : ''}">
+      <span class="n">${k+1}/${list.length}</span>
+      <b>${i.name}</b>
+      <img src="${i.art}" alt="">
+      <button class="buy" data-item="${i.id}" ${i.locked ? 'disabled' : ''}>
+        ${i.locked ? '🔒 закрыто' : i.price.toLocaleString('ru') + ' 🪙'}
+      </button>
+    </div>`).join('');
+  scFire('catOpened');
+}
+
+const closeSheet = () => { sheet.classList.remove('on'); genSpeech.classList.remove('on'); };
+
 sheet.addEventListener('click', e => {
-  if(e.target.closest('.close')) return closeSheet();
+  if(e.target.closest('.back')){
+    // назад: из категории — к списку категорий, из списка — на карту
+    return openCat ? openSheet() : closeSheet();
+  }
+  const cat = e.target.closest('[data-cat]');
+  if(cat) return openCategory(cat.dataset.cat);
   const buy = e.target.closest('[data-item]');
   if(buy) startPlacing(buy.dataset.item);
 });
@@ -584,7 +630,9 @@ const SCRIPT = [
     focus:'oldman' },
   { who:'grandson', text:'Нам нужна кофейня давай строить',
     pointAt:'#openSheet', wait:'sheetOpened' },
-  { pointAt:'[data-item="coffee"]', wait:'placing' },
+  { pointAt:'[data-cat="Преобразователи"]', wait:'catOpened' },
+  { who:'grandson', text:'Нам нужна кофейня давай строить',
+    pointAt:'[data-item="coffee"]', wait:'placing' },
   { text:'Выбери место и подтверди', wait:'built' },
   { who:'grandson', text:'СКОРЕЕ сделаем кофе я хочу латте на безлактозном' },
 ];
@@ -599,17 +647,31 @@ function scNext(){
 
   if(st.gen){ story.classList.remove('on'); return genStep(st.gen); }
 
-  if(st.who){
-    const c = CAST[st.who];
-    storyImg.src = c.img;
-    storyName.textContent = c.name;
-    storyName.className = 'name ' + c.cls;
-    story.querySelector('.who').style.display = '';
+  // поверх каталога показываем компактный бабл: персонаж в полный рост
+  // закрыл бы карточки, в макете там аватар сверху
+  const overSheet = sheet.classList.contains('on');
+  if(overSheet){
+    story.classList.remove('on');
+    if(st.text){
+      genSpeech.querySelector('img').src = '../assets/onboarding/avatar maloy-mini.png';
+      genSpeech.querySelector('.b').textContent = st.text;
+      genSpeech.style.top = '96px';
+      genSpeech.classList.add('on');
+    } else genSpeech.classList.remove('on');
   } else {
-    story.querySelector('.who').style.display = 'none';
+    genSpeech.classList.remove('on');
+    if(st.who){
+      const c = CAST[st.who];
+      storyImg.src = c.img;
+      storyName.textContent = c.name;
+      storyName.className = 'name ' + c.cls;
+      story.querySelector('.who').style.display = '';
+    } else {
+      story.querySelector('.who').style.display = 'none';
+    }
+    storyText.textContent = st.text || '';
+    story.classList.add('on');
   }
-  storyText.textContent = st.text || '';
-  story.classList.add('on');
 
   if(st.focus) focusOn(st.focus);
   if(st.pointAt) setTimeout(() => pointTo(st.pointAt), st.focus ? 700 : 60);
@@ -646,8 +708,10 @@ function pointTo(sel){
   const el = document.querySelector(sel);
   if(!el) return;
   const r = el.getBoundingClientRect();
+  const below = r.top > innerHeight * 0.55;     // цель внизу — показываем снизу вверх
+  point.textContent = below ? '⬆' : '⬇';
   point.style.left = (r.left + r.width/2 - 22) + 'px';
-  point.style.top  = Math.max(60, r.top - 58) + 'px';
+  point.style.top  = below ? (r.bottom + 8) + 'px' : Math.max(60, r.top - 58) + 'px';
   point.classList.add('on');
 }
 
