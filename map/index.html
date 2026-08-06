@@ -28,21 +28,7 @@
     opacity:1;background:rgba(90,230,120,.45);border:2px solid rgba(140,255,170,.9);cursor:pointer}
   body.placing .plot[data-state="free"].pick .pad{background:rgba(120,255,150,.75)}
 
-  /* строительные леса */
-  .plot[data-state="building"] .pad{opacity:1;background:rgba(210,210,210,.25);
-    border:2px dashed rgba(255,255,255,.85)}
-  .plot[data-state="building"] .art img{opacity:.55;filter:grayscale(.4)}
-  .scaffold{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);
-    width:150px;height:110px;pointer-events:none;
-    background:repeating-linear-gradient(90deg,rgba(255,255,255,.5) 0 3px,transparent 3px 22px),
-               repeating-linear-gradient(0deg,rgba(255,255,255,.5) 0 3px,transparent 3px 34px);
-    border:2px solid rgba(255,255,255,.6);border-radius:4px}
 
-  /* подарочная упаковка */
-  .gift{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);width:150px;height:120px;
-    background:linear-gradient(#c98c5a,#a86b3d);border-radius:8px;box-shadow:0 6px 14px rgba(0,0,0,.35)}
-  .gift::before{content:"";position:absolute;left:0;right:0;top:38%;height:22px;background:#d33a3a}
-  .gift::after{content:"🎀";position:absolute;left:50%;top:22%;transform:translate(-50%,-50%);font-size:34px}
 
   .chip{position:absolute;left:50%;top:0;transform:translate(-50%,-120%);
     background:#fff;color:#000;border-radius:100px;padding:6px 12px;font:600 13px/1 inherit;white-space:nowrap;
@@ -148,8 +134,12 @@ const BUILD_MS = 3000;                 // стройка идёт 3 секунд
 
 const CATALOG = [
   { cat:'Преобразователи', items:[
-      { id:'coffee', name:'Кофейня', price:2000, art:'../assets/map/building-barn.png', opens:'generator' },
+      { id:'coffee', name:'Кофейня', price:2000, opens:'generator',
+        art:'../assets/map/Cafe.png',
+        artBuild:'../assets/map/Cafe-construction.png',
+        artGift:'../assets/map/cafe-constructionend-open.png' },
       { id:'plant',  name:'Завод',   price:3500, art:'../assets/map/building-generator.png', opens:'generator' },
+      { id:'orders', name:'Доска заказов', price:1500, art:'../assets/map/building-order board.png' },
   ]},
   { cat:'Дома', items:[
       { id:'house', name:'Домик', price:1200, art:'../assets/map/building-barn.png', locked:true },
@@ -212,16 +202,15 @@ function paintPlot(p){
 
   const item = itemById(b.itemId);
   el.dataset.state = b.state;
-  art.innerHTML = b.state === 'gift' ? '' : `<img src="${item.art}" alt=""
-      style="transform:scaleX(${b.flip ? -1 : 1})">`;
 
-  if(b.state === 'building'){
-    el.insertAdjacentHTML('beforeend', '<div class="scaffold"></div><div class="chip">🕐 …</div>');
-  } else if(b.state === 'gift'){
-    el.insertAdjacentHTML('beforeend', '<div class="gift"></div><div class="chip unlock">🔓</div>');
-  } else {
-    el.insertAdjacentHTML('beforeend', `<div class="label">${item.name}</div>`);
-  }
+  const src = b.state === 'building' ? (item.artBuild || item.art)
+            : b.state === 'gift'     ? (item.artGift  || item.art)
+            : item.art;
+  art.innerHTML = `<img src="${src}" alt="" style="transform:scaleX(${b.flip ? -1 : 1})">`;
+
+  if(b.state === 'building')  el.insertAdjacentHTML('beforeend', '<div class="chip">🕐 …</div>');
+  else if(b.state === 'gift') el.insertAdjacentHTML('beforeend', '<div class="chip unlock">🔓</div>');
+  else                        el.insertAdjacentHTML('beforeend', `<div class="label">${item.name}</div>`);
 }
 const paintAll = () => { PLOTS.forEach(paintPlot); coinsEl.textContent = coins.toLocaleString('ru'); };
 

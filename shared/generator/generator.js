@@ -77,9 +77,8 @@ const GENERATOR_MARKUP = String.raw`<div id="phone">
       <div class="row">
         <div class="label">ВЕРСИЯ СБОРА</div>
         <div class="seg">
-          <button data-set="collect:tool">A · ручкой</button>
-          <button data-set="collect:direct">B · напрямую</button>
-          <button data-set="collect:select">C · выделением</button>
+          <button data-set="collect:direct">Забиранием</button>
+          <button data-set="collect:select">Выделением</button>
         </div>
         <div class="hint" id="collectHint"></div>
       </div>
@@ -147,7 +146,7 @@ const RESOURCE_TYPES = [
   { id:'coffee',     name:'Кофе',     growMs:40*1000, image: ASSETS + '/imgcoffe.png' },
 ];
 
-const CELLS_PER_BLOCK = 25;
+const CELLS_PER_BLOCK = opts.cells || 25;
 const MODES = { single:1, overflow:4 };
 const SKELETON_MS = 600;
 const DOUBLE_TAP_MS = 300;
@@ -301,14 +300,17 @@ let selectedType = RESOURCE_TYPES[0].id;
 
 function buildTray(){
   tray.innerHTML = '';
+  const open = opts.unlocked || null;          // null — открыто всё
   RESOURCE_TYPES.forEach(t => {
+    const locked = open && !open.includes(t.id);
     const el = document.createElement('div');
-    el.className = 'seed' + (t.id === selectedType ? ' sel' : '');
+    el.className = 'seed' + (t.id === selectedType && !locked ? ' sel' : '') + (locked ? ' locked' : '');
     el.dataset.type = t.id;
-    el.title = `${t.name} · ${t.growMs/1000} сек`;
-    el.innerHTML = `<img src="${t.image}" alt="${t.name}">`;
+    el.title = locked ? `${t.name} — закрыт` : `${t.name} · ${t.growMs/1000} сек`;
+    el.innerHTML = `<img src="${t.image}" alt="${t.name}">` + (locked ? '<span class="lock">🔒</span>' : '');
     tray.appendChild(el);
   });
+  if(open && !open.includes(selectedType)) selectedType = open[0];
 }
 
 /* ═══════════ ПЕРЕТАСКИВАНИЕ ═══════════
@@ -355,7 +357,7 @@ function startDrag(kind, srcEl, typeId, e){
 
 tray.addEventListener('pointerdown', e => {
   const seed = e.target.closest('.seed');
-  if(!seed) return;
+  if(!seed || seed.classList.contains('locked')) return;
   e.preventDefault();
   selectedType = seed.dataset.type;
   tray.querySelectorAll('.seed').forEach(s => s.classList.toggle('sel', s === seed));
@@ -656,16 +658,16 @@ function updatePager(){
 const CFG_KEY = 'generator-proto-cfg';
 const settings = $('#settings');
 
-let cfg = { collect:'tool', direct:'free' };
+let cfg = { collect:'direct', direct:'free' };
 try { Object.assign(cfg, JSON.parse(localStorage.getItem(CFG_KEY)) || {}); } catch {}
 // убранные варианты («тап», «направление») переезжают на свободное заметание
 if(!['free','start','hold'].includes(cfg.direct)) cfg.direct = 'free';
+  if(cfg.collect === 'tool') cfg.collect = 'direct';   // ручка убрана из механики
 
 const saveCfg = () => localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
 
 const HINTS = {
   collect: {
-    tool:   'Как в макете: берёшь ручку снизу справа и ведёшь по готовым ячейкам.',
     direct: 'Ручки нет, ячейку трогаешь напрямую. Ниже — чем отличать сбор от прокрутки.',
     select: 'Как выбор фото в айфоне: отмечаешь ячейки — тапом или проводя пальцем, — а потом одним действием собираешь или засеиваешь всё выделенное. Выделение живёт между блоками.'
   },
@@ -681,8 +683,8 @@ function applyCfg(){
   const select = cfg.collect === 'select';
   phone.dataset.ver = cfg.collect;
   $('#directRow').hidden = !direct;
-  collectTool.hidden = direct || select;   // ручка живёт только в версии A
-  $('#devver').textContent = select ? 'C' : direct ? 'B' : 'A';
+  collectTool.hidden = true;               // ручки в механике больше нет
+  $('#devver').textContent = select ? 'выделение' : 'забирание';
   if(!select) clearPicked();
   $('#collectHint').textContent = HINTS.collect[cfg.collect];
   $('#directHint').textContent = HINTS.direct[cfg.direct];
@@ -952,6 +954,7 @@ function render(){
   if(opts.version){ cfg.collect = opts.version; saveCfg(); }
   if(opts.mode && opts.mode !== state.mode) state = fresh(opts.mode);
   if(opts.chrome === false) $('#devbtn').style.display = 'none';
+  if(opts.dim) $('#phone').classList.add('dim');
 
   render();
   return api;

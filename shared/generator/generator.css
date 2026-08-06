@@ -85,7 +85,9 @@
   }
   #scroller{
     width:100%;height:var(--block-w);
-    display:flex;gap:var(--block-gap);padding:0 var(--grid-left);
+    /* ряды прижимались к верху, когда ячеек меньше пяти рядов —
+       центрируем, чтобы сетка стояла посередине экрана */
+    display:flex;align-items:center;gap:var(--block-gap);padding:0 var(--grid-left);
     overflow-x:auto;scroll-snap-type:x mandatory;
     scrollbar-width:none;overscroll-behavior-x:contain;
   }
@@ -275,3 +277,15 @@
 .cell.hint{ box-shadow: inset 0 0 0 2px #ffd60a; animation: hintPulse 1.4s ease-in-out infinite; }
 @keyframes hintPulse{ 0%,100%{ box-shadow: inset 0 0 0 2px rgba(255,214,10,1); }
                       50%    { box-shadow: inset 0 0 0 2px rgba(255,214,10,.25); } }
+
+/* онбординг приглушает шапку, чтобы не отвлекала от действия */
+#phone.dim .statusbar,
+#phone.dim #widget,
+#phone.dim .titlewrap{opacity:.32;transition:opacity .3s}
+
+/* закрытый тип в лотке */
+.seed.locked{position:relative;opacity:.5;cursor:default}
+.seed.locked img{filter:grayscale(.7) brightness(.7)}
+.seed .lock{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:38px;height:38px;border-radius:50%;background:#f6f7f8;color:#000;
+  display:grid;place-items:center;font-size:17px}
