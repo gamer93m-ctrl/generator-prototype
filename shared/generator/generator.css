@@ -1,0 +1,277 @@
+/* ═══ токены из макета (get_variable_defs) ═══ */
+  :root{
+    --tui-text-action:#428bf9;
+    --tui-status-info:#428bf9;
+    --cell-bg:rgba(255,255,255,.1);        /* tui-background-neutral-1-on-dark */
+    --cell-radius:6px;
+    /* размер ячейки считается в fit() под доступную высоту, 56 — потолок из макета */
+    --cell-size:56px;
+    --cell-gap:2px;
+    --block-w:288px;                        /* 5×56 + 4×2 */
+    --block-gap:20px;
+    --grid-left:36px;
+    --stage-pad:16px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+  html,body{margin:0;padding:0;height:100%;background:#000;overflow:hidden;overscroll-behavior:none}
+
+  /* ═══ Экран живёт в координатах макета: ширина всегда ровно 360,
+     высота — сколько дал экран. Горизонтальные размеры из Figma
+     сохраняются точно, вертикальные зазоры тянутся. ═══ */
+  #phone{
+    position:absolute;left:0;top:0;width:360px;background:#000;overflow:hidden;
+    transform-origin:0 0;
+    display:flex;flex-direction:column;
+    font:400 17px/1 -apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",system-ui,sans-serif;
+    color:#fff;
+  }
+
+  /* ─── status bar (44) ─── */
+  .statusbar{position:relative;flex:0 0 44px}
+  #phone.compact .statusbar,
+  #phone.compact #homebar{display:none}   /* мало высоты — убираем бутафорию */
+  /* и поджимаем всё вокруг сетки: чем меньше уйдёт на обвязку,
+     тем крупнее ячейки и тем полнее сетка занимает ширину */
+  #phone.compact .titlewrap{padding:2px 16px 10px}
+  #phone.compact #title{font-size:22px;line-height:26px}
+  #phone.compact #desc{margin-top:8px;font-size:15px}
+  #phone.compact .controls{flex-basis:44px;margin-top:10px}
+  #phone.compact #pager{top:12px}
+  #phone.compact #collect{width:44px;height:44px;font-size:26px}
+  #phone.compact #tray{padding-top:14px;padding-bottom:14px}
+  #phone.compact .seed{width:64px;height:64px}
+  #phone.compact .seed img{width:58px;height:58px}
+  #time{position:absolute;left:34px;top:12px;font-size:15px;font-weight:600;letter-spacing:-.2px}
+  #sysicons{position:absolute;right:14px;top:15px;font-size:11px;letter-spacing:1px;opacity:.95}
+
+  /* ─── app bar (44) ─── */
+  .appbar{position:relative;flex:0 0 44px}
+  #back{
+    position:absolute;left:8px;top:10px;width:12px;height:24px;border:0;background:none;padding:0;
+    cursor:pointer;color:var(--tui-text-action);font-size:26px;line-height:24px;font-weight:300;
+  }
+
+  /* ─── бейджи: widget @140,44 · 220×44, px16 py8 gap12 ─── */
+  #widget{
+    position:absolute;right:16px;top:8px;height:28px;
+    display:flex;gap:12px;align-items:center;
+  }
+  .badge{
+    height:28px;min-width:28px;border-radius:100px;background:#1c1c1e;
+    display:flex;align-items:center;padding:0 6px;gap:2px;
+    font-size:13px;font-weight:600;letter-spacing:-.08px;white-space:nowrap;
+  }
+  .badge i{width:16px;height:16px;border-radius:50%;display:block;flex:0 0 auto}
+  .i-gem{background:radial-gradient(circle at 34% 28%,#7ee0ff,#1a6ee8 72%)}
+  .i-coin{background:radial-gradient(circle at 34% 28%,#ffe066,#f0940a 72%)}
+  .badge span{padding:0 4px}
+  #ring{position:relative;width:28px;height:28px;border-radius:100px;background:#1c1c1e;display:grid;place-items:center}
+  #ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+  #ring b{font-size:13px;font-weight:600;letter-spacing:-.08px}
+
+  /* ─── заголовок ─── */
+  .titlewrap{flex:0 0 auto;padding:4px 16px 26px}
+  #title{
+    font-family:-apple-system,"SF Pro Display",system-ui,sans-serif;
+    font-size:30px;font-weight:700;letter-spacing:.36px;line-height:36px;
+  }
+  #desc{margin-top:18px;font-size:17px;letter-spacing:-.41px;color:#8e8e93}
+
+  /* ─── сетка блоков ─── */
+  /* сетка забирает свободную высоту, минимальные поля сверху и снизу гарантированы */
+  #stage{
+    flex:1 1 auto;position:relative;display:flex;align-items:center;
+    min-height:0;padding:var(--stage-pad) 0;
+  }
+  #scroller{
+    width:100%;height:var(--block-w);
+    display:flex;gap:var(--block-gap);padding:0 var(--grid-left);
+    overflow-x:auto;scroll-snap-type:x mandatory;
+    scrollbar-width:none;overscroll-behavior-x:contain;
+  }
+  #scroller::-webkit-scrollbar{display:none}
+  #scroller.one{overflow-x:hidden}
+  #scroller.nosnap{scroll-snap-type:none}   /* на время быстрой прокрутки */
+  .block{
+    /* якорная позиция: блок всегда встаёт по центру экрана */
+    flex:0 0 var(--block-w);scroll-snap-align:center;
+    display:grid;grid-template-columns:repeat(5,var(--cell-size));
+    grid-auto-rows:var(--cell-size);gap:var(--cell-gap);
+  }
+  .cell{
+    background:var(--cell-bg);border-radius:var(--cell-radius);
+    position:relative;overflow:hidden;
+    display:grid;place-items:center;
+  }
+  /* выбранная ячейка — как resources23 в макете */
+  .cell.sel::before{
+    content:"";position:absolute;inset:0;background:rgba(66,139,249,.2);z-index:2;
+  }
+  /* в версии C выбор множественный, поэтому ставим галочку как в фотоплёнке */
+  #phone[data-ver="select"] .cell.sel::after{
+    content:"✓";position:absolute;right:3px;top:3px;width:16px;height:16px;
+    border-radius:50%;background:var(--tui-text-action);color:#fff;
+    font-size:10px;font-weight:700;line-height:16px;text-align:center;z-index:3;
+  }
+
+  /* ─── панель действий над выделением ─── */
+  #actionbar{
+    flex:0 0 auto;display:flex;align-items:center;gap:8px;
+    margin:0 16px;padding:8px 8px 8px 14px;
+    background:rgba(255,255,255,.1);border-radius:14px;
+  }
+  #actionbar[hidden]{display:none}
+  #actionbar .n{flex:1;font-size:13px;font-weight:600;letter-spacing:-.08px}
+  #actionbar .n small{display:block;font-weight:400;color:#8e8e93;font-size:11px;margin-top:2px}
+  #actionbar button{
+    border:0;border-radius:9px;padding:9px 12px;font:600 13px/1 inherit;cursor:pointer;
+  }
+  #actionbar .go{background:var(--tui-text-action);color:#fff}
+  #actionbar .go[disabled]{background:rgba(255,255,255,.12);color:#636366;cursor:default}
+  #actionbar .clr{background:none;color:#8e8e93;padding:9px 4px}
+  /* доля от ячейки, а не фикс — ячейка меняет размер под экран */
+  .cell img{width:71%;height:71%;object-fit:contain;pointer-events:none;position:relative}
+  .cell.growing img{opacity:.4}
+  .cell .arc{position:absolute;inset:0;transform:rotate(-90deg);pointer-events:none}
+
+  /* фидбек при проведении инструментом/ресурсом: ячейка чуть поджимается */
+  .cell{transition:transform .16s cubic-bezier(.34,1.56,.64,1)}
+  .cell.hov{transform:scale(.88)}
+
+  /* края (33px, узлы 2:14144 / 2:14145): прозрачные тап-зоны прокрутки.
+     Ничего не затемняют — соседний блок должен быть видно. */
+  .fade{
+    position:absolute;top:0;bottom:0;width:var(--grid-left);z-index:3;
+    border:0;padding:0;background:none;cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .fade.l{left:0}
+  .fade.r{right:0}
+  .fade:active::after{content:"";position:absolute;inset:0;background:rgba(255,255,255,.05)}
+  .fade[disabled]{cursor:default;pointer-events:none}
+  /* зона «взведена»: ресурс поднесён к краю, сейчас пойдёт прокрутка */
+  .fade.armed::after{
+    content:"";position:absolute;inset:0;
+    background:linear-gradient(var(--edge-dir),rgba(255,214,10,.32),transparent);
+    animation:armed .7s ease-in-out infinite;
+  }
+  .fade.l.armed::after{--edge-dir:90deg}
+  .fade.r.armed::after{--edge-dir:270deg}
+  @keyframes armed{0%,100%{opacity:.45}50%{opacity:1}}
+  #phone.dragging .fade{pointer-events:none}   /* не мешать перетаскиванию */
+
+  /* ─── пейджер @133,536 · 95×20 ─── */
+  .controls{position:relative;flex:0 0 52px;margin-top:24px}
+  #pager{
+    position:absolute;left:133px;top:16px;width:95px;height:20px;border-radius:10px;
+    background:var(--cell-bg);display:flex;align-items:center;justify-content:center;gap:6px;
+    touch-action:none;cursor:grab;
+    transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s;
+  }
+  #pager.hide{display:none}
+  /* жест точной прокрутки: долгий тап — pager подрастает */
+  #pager.zoom{transform:scale(1.25);box-shadow:0 0 0 1px rgba(255,255,255,.35) inset;cursor:grabbing}
+  #pager i{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.22);transition:background .15s}
+  #pager i.on{background:var(--tui-status-info)}
+
+  /* ─── инструмент сбора @272,528 · 52×52 ─── */
+  #collect{
+    position:absolute;left:272px;top:0;width:52px;height:52px;border-radius:50%;
+    background:var(--cell-bg);border:0;padding:0;display:grid;place-items:center;
+    font-size:32px;line-height:1;cursor:grab;touch-action:none;
+  }
+  #collect.lifted{opacity:.35}
+  #collect[hidden]{display:none}   /* иначе display:grid выше перебивает [hidden] */
+
+  /* ─── лоток: frame @0,594 · 360×152, items 80 @y24, x40 шаг 92 ─── */
+  #tray{
+    flex:0 0 auto;width:360px;
+    display:flex;gap:12px;padding:24px 40px;
+    overflow-x:auto;scrollbar-width:none;
+  }
+  #tray::-webkit-scrollbar{display:none}
+  .seed{
+    flex:0 0 auto;width:80px;height:80px;border-radius:12px;
+    display:grid;place-items:center;cursor:grab;touch-action:none;
+    border:1px solid transparent;
+  }
+  .seed.sel{border:1px dashed rgba(255,255,255,.32)}
+  .seed.lifted{opacity:.35}
+  .seed img{width:72px;height:72px;object-fit:contain;pointer-events:none}
+
+  /* ─── home bar ─── */
+  #homebar{flex:0 0 34px;position:relative}
+  #homebar::after{content:"";position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:133px;height:5px;border-radius:100px;background:#fff}
+
+  /* ─── призрак перетаскивания ─── */
+  /* остаётся в потоке, но не виден и не ловит касания */
+  #ghost{position:fixed;left:0;top:0;width:64px;height:64px;pointer-events:none;z-index:90;display:none}
+  #ghost img{width:100%;height:100%;object-fit:contain;display:block}
+  #ghost span{display:block;width:100%;height:100%;font-size:44px;line-height:64px;text-align:center}
+  #ghost img[hidden],#ghost span[hidden]{display:none}
+
+  /* ─── тултип ─── */
+  #tip{
+    position:absolute;z-index:60;display:none;background:#f2f2f7;color:#000;
+    border-radius:12px;padding:9px 12px;font-size:13px;line-height:1.35;font-weight:500;
+    box-shadow:0 8px 24px rgba(0,0,0,.5);max-width:170px;
+  }
+  #tip::after{content:"";position:absolute;bottom:-5px;left:calc(50% - 6px);width:12px;height:12px;background:#f2f2f7;transform:rotate(45deg);border-radius:2px}
+  #tip button{display:block;margin-top:8px;width:100%;border:0;border-radius:8px;background:var(--tui-text-action);color:#fff;font:600 13px/1 inherit;padding:8px;cursor:pointer}
+
+  /* ─── скелетон ─── */
+  #skeleton{position:absolute;inset:0;background:#000;z-index:70;display:none}
+  #skeleton.on{display:block}
+  .sk{background:rgba(255,255,255,.06);border-radius:6px;position:relative;overflow:hidden}
+  .sk::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.05),transparent);animation:sh 1.1s infinite}
+  @keyframes sh{100%{transform:translateX(100%)}}
+
+  /* ─── вход в служебные настройки: в шапке, в свободной зоне app-bar ─── */
+  #devbtn{
+    position:absolute;left:40px;top:8px;height:28px;z-index:40;
+    display:flex;align-items:center;gap:6px;padding:0 12px;
+    border:1px dashed rgba(255,255,255,.28);border-radius:100px;
+    background:rgba(255,255,255,.04);color:#8e8e93;
+    font:600 12px/1 inherit;letter-spacing:-.1px;cursor:pointer;
+  }
+  #devbtn:hover{color:#c7c7cc}
+  #devbtn b{color:var(--tui-text-action)}
+
+  /* ─── страница настроек прототипа ─── */
+  #settings{
+    position:absolute;inset:0;z-index:100;background:#000;
+    display:flex;flex-direction:column;overflow-y:auto;
+  }
+  #settings[hidden]{display:none}
+  #settings .head{
+    flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
+    padding:16px 16px 8px;
+  }
+  #settings h2{margin:0;font-size:24px;font-weight:700;letter-spacing:.2px}
+  #settings .close{
+    border:0;background:rgba(255,255,255,.1);color:#fff;width:32px;height:32px;
+    border-radius:50%;font-size:17px;line-height:1;cursor:pointer;
+  }
+  #settings .body{padding:8px 16px 24px;display:flex;flex-direction:column;gap:22px}
+  .row .label{font-size:13px;font-weight:600;color:#8e8e93;margin-bottom:8px;letter-spacing:-.08px}
+  .row .hint{font-size:12px;line-height:1.4;color:#636366;margin-top:8px}
+  .seg{display:flex;background:rgba(255,255,255,.1);border-radius:10px;padding:3px;gap:3px}
+  .seg button{
+    flex:1;border:0;background:none;color:#c7c7cc;border-radius:8px;
+    padding:9px 6px;font:600 13px/1.2 inherit;cursor:pointer;letter-spacing:-.08px;
+  }
+  .seg button.on{background:var(--tui-text-action);color:#fff}
+  .danger{
+    width:100%;border:1px solid rgba(255,255,255,.18);background:none;color:#ff453a;
+    border-radius:10px;padding:12px;font:600 14px/1 inherit;cursor:pointer;
+  }
+  #settings .note{
+    font-size:12px;line-height:1.45;color:#636366;
+    border-top:1px solid rgba(255,255,255,.1);padding-top:14px;
+  }
+
+/* подсветка ячейки для подсказок онбординга */
+.cell.hint{ box-shadow: inset 0 0 0 2px #ffd60a; animation: hintPulse 1.4s ease-in-out infinite; }
+@keyframes hintPulse{ 0%,100%{ box-shadow: inset 0 0 0 2px rgba(255,214,10,1); }
+                      50%    { box-shadow: inset 0 0 0 2px rgba(255,214,10,.25); } }

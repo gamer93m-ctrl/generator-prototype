@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Карта — прототип</title>
+<link rel="stylesheet" href="../shared/generator/generator.css">
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+  html,body{margin:0;height:100%;background:#d8c08c;overflow:hidden;overscroll-behavior:none;
+    font:400 15px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:#fff}
+
+  /* ─── карта: холст двигается пальцем ─── */
+  #viewport{position:fixed;inset:0;overflow:hidden;touch-action:none;cursor:grab}
+  #viewport.dragging{cursor:grabbing}
+  #canvas{position:absolute;left:0;top:0;width:922px;height:1200px;transform-origin:0 0}
+  #canvas img.base{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+
+  /* ─── площадка под здание ─── */
+  .slot{position:absolute;transform:translate(-50%,-50%);cursor:pointer}
+  .slot .plate{
+    width:140px;height:78px;transform:rotate(45deg) scaleY(.58);transform-origin:center;
+    border-radius:6px;
+  }
+  .slot[data-state="free"] .plate{border:2px dashed rgba(255,255,255,.75);background:rgba(255,255,255,.12)}
+  .slot[data-state="locked"] .plate{border:2px solid rgba(0,0,0,.25);background:rgba(0,0,0,.22)}
+  .slot[data-state="building"] .plate,
+  .slot[data-state="ready"] .plate{border:0;background:none}
+
+  .slot .art{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);pointer-events:none}
+  .slot .art img{display:block;width:170px;height:auto}
+
+  .slot .badge{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    display:flex;flex-direction:column;align-items:center;gap:4px;
+    font-size:13px;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,.6);white-space:nowrap;
+  }
+  .slot .badge .icon{font-size:22px;line-height:1}
+  .slot[data-state="ready"] .badge{top:auto;bottom:-6px;transform:translateX(-50%)}
+
+  /* прогресс стройки */
+  .slot .bar{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:96px;height:6px;border-radius:3px;background:rgba(0,0,0,.45);overflow:hidden}
+  .slot .bar i{display:block;height:100%;width:0;background:#ffd60a;transition:width .1s linear}
+
+  /* ─── шапка ─── */
+  #bar{position:fixed;left:0;right:0;top:0;z-index:10;display:flex;align-items:center;gap:8px;
+    padding:14px 16px;background:linear-gradient(#000c,#0000);pointer-events:none}
+  #bar h1{margin:0;font-size:17px;font-weight:600;flex:1}
+  #bar .pill{pointer-events:auto;background:rgba(0,0,0,.5);border:0;color:#fff;border-radius:100px;
+    padding:8px 13px;font:600 13px/1 inherit;cursor:pointer}
+  #hintline{position:fixed;left:16px;right:16px;bottom:20px;z-index:10;text-align:center;
+    font-size:13px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.8);pointer-events:none}
+
+  /* ─── экран здания поверх карты ─── */
+  #screen{position:fixed;inset:0;z-index:50;background:#000;display:none}
+  #screen.on{display:block}
+  #screen .back{position:fixed;left:8px;top:44px;z-index:60;border:0;background:none;
+    color:#0a84ff;font:300 26px/24px inherit;cursor:pointer;padding:8px}
+</style>
+</head>
+<body>
+
+<div id="viewport">
+  <div id="canvas">
+    <img class="base" src="../assets/map/map-base.png" alt="">
+  </div>
+</div>
+
+<div id="bar">
+  <h1>Ферма</h1>
+  <button class="pill" id="reset">сброс</button>
+</div>
+<div id="hintline"></div>
+
+<div id="screen"><button class="back" aria-label="Назад">‹</button><div id="app"></div></div>
+
+<script src="../shared/generator/generator.js"></script>
+<script>
+'use strict';
+
+/* ═══════════ ЧТО ЕСТЬ НА КАРТЕ ═══════════
+   Координаты — точки на картинке карты 922×1200.
+   state: locked (не открыто) | free (можно строить) | building | ready   */
+
+const BUILD_MS = 5000;          // сколько идёт стройка
+
+const SLOTS = [
+  { id:'generator', name:'Генератор', icon:'🌱', x:285, y:880,
+    state:'ready', art:null, opens:'generator' },      // уже нарисован на карте
+  { id:'barn',      name:'Амбар',     icon:'🏚', x:612, y:840,
+    state:'free',  art:'../assets/map/building-barn.png' },
+  { id:'store',     name:'Склад',     icon:'📦', x:150, y:520,
+    state:'free',  art:'../assets/map/building-generator.png' },
+  { id:'workshop',  name:'Мастерская',icon:'🔧', x:735, y:1075,
+    state:'locked', art:'../assets/map/building-generator.png' },
+];
+
+const KEY = 'farm-map-v1';
+let slots = load();
+
+function load(){
+  try{
+    const saved = JSON.parse(localStorage.getItem(KEY));
+    if(!Array.isArray(saved)) throw 0;
+    return SLOTS.map(s => ({ ...s, ...(saved.find(x => x.id === s.id) || {}) }));
+  }catch{ return SLOTS.map(s => ({ ...s })); }
+}
+const save = () => localStorage.setItem(KEY,
+  JSON.stringify(slots.map(({id, state, endsAt}) => ({id, state, endsAt}))));
+
+/* ═══════════ ОТРИСОВКА ═══════════ */
+
+const canvas = document.getElementById('canvas');
+const hintline = document.getElementById('hintline');
+const els = {};
+
+function build(){
+  slots.forEach(s => {
+    const el = document.createElement('div');
+    el.className = 'slot';
+    el.style.left = s.x + 'px';
+    el.style.top  = s.y + 'px';
+    el.dataset.id = s.id;
+    el.innerHTML = '<div class="plate"></div><div class="art"></div>' +
+                   '<div class="badge"></div><div class="bar"><i></i></div>';
+    canvas.appendChild(el);
+    els[s.id] = el;
+  });
+  paintAll();
+}
+
+function paint(s){
+  const el = els[s.id];
+  el.dataset.state = s.state;
+  const art = el.querySelector('.art');
+  const badge = el.querySelector('.badge');
+  const bar = el.querySelector('.bar');
+
+  art.innerHTML = (s.state === 'ready' && s.art) ? `<img src="${s.art}" alt="">` : '';
+  bar.style.display = s.state === 'building' ? '' : 'none';
+
+  if(s.state === 'locked')        badge.innerHTML = `<span class="icon">🔒</span>${s.name}`;
+  else if(s.state === 'free')     badge.innerHTML = `<span class="icon">➕</span>Построить`;
+  else if(s.state === 'building') badge.innerHTML = '';
+  else                            badge.innerHTML = `<span class="icon">${s.icon}</span>${s.name}`;
+}
+const paintAll = () => slots.forEach(paint);
+
+/* ═══════════ ДЕЙСТВИЯ ═══════════ */
+
+canvas.addEventListener('click', e => {
+  // флаг сбрасываем сразу: иначе он остаётся висеть после перетаскивания
+  // и съедает следующий тап
+  const wasPanned = panned;
+  panned = false;
+  if(wasPanned) return;
+
+  const el = e.target.closest('.slot');
+  if(!el) return;
+  const s = slots.find(x => x.id === el.dataset.id);
+
+  if(s.state === 'locked') return say(`${s.name} откроется позже`);
+  if(s.state === 'free'){
+    s.state = 'building';
+    s.endsAt = Date.now() + BUILD_MS;
+    paint(s); save();
+    say(`${s.name} строится…`);
+    return;
+  }
+  if(s.state === 'building') return say('Ещё строится');
+  if(s.opens === 'generator') return openGenerator();
+  say(`${s.name}: экран пока не сделан`);
+});
+
+let sayTimer;
+function say(text){
+  hintline.textContent = text;
+  clearTimeout(sayTimer);
+  sayTimer = setTimeout(() => { hintline.textContent = ''; }, 2200);
+}
+
+/* стройка идёт по таймеру, как генерация на грядках */
+setInterval(() => {
+  const now = Date.now();
+  slots.forEach(s => {
+    if(s.state !== 'building') return;
+    const left = s.endsAt - now;
+    if(left <= 0){
+      s.state = 'ready';
+      paint(s); save();
+      say(`${s.name} построен`);
+    } else {
+      els[s.id].querySelector('.bar i').style.width =
+        (100 * (1 - left / BUILD_MS)).toFixed(1) + '%';
+    }
+  });
+}, 100);
+
+/* ═══════════ ПЕРЕТАСКИВАНИЕ КАРТЫ ═══════════ */
+
+const viewport = document.getElementById('viewport');
+const MAP_W = 922, MAP_H = 1200;
+let scale = 1, ox = 0, oy = 0;
+let drag = null, panned = false;
+
+function clamp(){
+  const w = MAP_W * scale, h = MAP_H * scale;
+  // карта не уезжает от края: если она меньше экрана — центрируем
+  ox = w <= innerWidth  ? (innerWidth  - w) / 2 : Math.min(0, Math.max(innerWidth  - w, ox));
+  oy = h <= innerHeight ? (innerHeight - h) / 2 : Math.min(0, Math.max(innerHeight - h, oy));
+}
+function apply(){
+  clamp();
+  canvas.style.transform = `translate(${ox}px, ${oy}px) scale(${scale})`;
+}
+function fit(){
+  // карта заполняет экран целиком, лишнее уходит за края
+  scale = Math.max(innerWidth / MAP_W, innerHeight / MAP_H);
+  ox = (innerWidth  - MAP_W * scale) / 2;
+  oy = (innerHeight - MAP_H * scale) / 2;
+  apply();
+}
+addEventListener('resize', fit);
+
+viewport.addEventListener('pointerdown', e => {
+  drag = { x:e.clientX, y:e.clientY, ox, oy };
+  panned = false;
+  viewport.classList.add('dragging');
+});
+addEventListener('pointermove', e => {
+  if(!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if(Math.hypot(dx, dy) > 6) panned = true;
+  ox = drag.ox + dx; oy = drag.oy + dy;
+  apply();
+});
+addEventListener('pointerup', () => { drag = null; viewport.classList.remove('dragging'); });
+addEventListener('pointercancel', () => { drag = null; viewport.classList.remove('dragging'); });
+
+/* ═══════════ ЭКРАН ЗДАНИЯ ═══════════ */
+
+const screen = document.getElementById('screen');
+let gen = null;
+
+function openGenerator(){
+  screen.classList.add('on');
+  if(!gen){
+    gen = createGenerator(document.getElementById('app'), {
+      assets: '../assets',
+      storeKey: 'farm-map-generator'
+    });
+  }
+  dispatchEvent(new Event('resize'));   // модуль пересчитает масштаб под экран
+}
+screen.querySelector('.back').addEventListener('click', () => screen.classList.remove('on'));
+
+document.getElementById('reset').addEventListener('click', () => {
+  slots = SLOTS.map(s => ({ ...s }));
+  save(); paintAll(); say('Карта сброшена');
+});
+
+build();
+fit();
+say('Тапни площадку, чтобы построить');
+</script>
+</body>
+</html>

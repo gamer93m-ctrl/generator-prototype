@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Генератор — прототип</title>
+<link rel="stylesheet" href="../shared/generator/generator.css">
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#000;overflow:hidden}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="../shared/generator/generator.js"></script>
+<script>
+  createGenerator(document.getElementById('app'), {
+    assets: '../assets'
+  });
+</script>
+</body>
+</html>
