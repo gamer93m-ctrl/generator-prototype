@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Онбординг, вариант 1</title>
-<link rel="stylesheet" href="../shared/generator/generator.css?v=202608161716">
+<link rel="stylesheet" href="../shared/generator/generator.css?v=202608161724">
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
   html,body{margin:0;height:100%;background:#d8c08c;overflow:hidden;overscroll-behavior:none;
@@ -248,29 +248,25 @@
     opacity:0;transition:opacity .18s}
   #genDemo .hand.show{opacity:1}
 
-  /* Палец и ресурс — один объект: раньше это были два пятна друг над
-     другом и читались как дубль. Кольцо остаётся подложкой касания,
-     ресурс лежит прямо в нём. */
-  #genDemo .dot{display:block;width:46px;height:46px;border-radius:50%;
-    background:rgba(255,255,255,.18);border:2.5px solid rgba(255,255,255,.92);
-    box-shadow:0 6px 18px rgba(0,0,0,.45);
-    transition:transform .12s var(--ease),background .12s}
-  #genDemo .hand.press .dot{transform:scale(.82);background:rgba(255,255,255,.42)}
-  /* когда что-то несём, кольцо уходит на второй план */
-  #genDemo .hand.hold .dot{transform:scale(1.28);background:rgba(255,255,255,.1);
-    border-color:rgba(255,255,255,.55)}
+  /* Рука-курсор: палец подведён к точке жеста, ресурс лежит прямо под ним.
+     Служебного кольца больше нет — оно читалось как отдельный элемент. */
+  /* щепоть смыкается ровно на ресурсе — видно, что его держат, а не тычут */
+  #genDemo .finger{position:absolute;left:-6px;top:-10px;font-size:50px;line-height:1;
+    filter:drop-shadow(0 8px 12px rgba(0,0,0,.6));
+    transition:transform .12s var(--ease)}
+  #genDemo .hand.press .finger{transform:translate(-2px,3px) scale(.9)}
 
   /* волна от нажатия */
-  #genDemo .wave{position:absolute;left:50%;top:50%;width:42px;height:42px;margin:-21px 0 0 -21px;
-    border-radius:50%;border:3px solid rgba(255,255,255,.9);opacity:0}
+  #genDemo .wave{position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;
+    border-radius:50%;border:3px solid rgba(255,255,255,.75);opacity:0}
   #genDemo .hand.press .wave{animation:demoWave .5s ease-out}
   @keyframes demoWave{0%{opacity:.9;transform:scale(.6)}100%{opacity:0;transform:scale(2.3)}}
 
-  /* ресурс лежит в самом касании, а не отдельным пятном сверху */
-  #genDemo .carry{position:absolute;left:50%;top:50%;width:54px;height:54px;object-fit:contain;
-    transform:translate(-50%,-50%) scale(.55);opacity:0;
+  /* ресурс — под пальцем, в самой точке жеста */
+  #genDemo .carry{position:absolute;left:50%;top:50%;width:56px;height:56px;object-fit:contain;
+    transform:translate(-50%,-50%) scale(.5);opacity:0;
     transition:transform .2s var(--ease),opacity .18s;
-    filter:drop-shadow(0 6px 12px rgba(0,0,0,.6))}
+    filter:drop-shadow(0 8px 14px rgba(0,0,0,.65))}
   #genDemo .hand.hold .carry{transform:translate(-50%,-50%) scale(1);opacity:1}
 
   /* ячейка, над которой рука прямо сейчас */
@@ -627,7 +623,7 @@
   </div>
 
 
-<script src="../shared/generator/generator.js?v=202608161716"></script>
+<script src="../shared/generator/generator.js?v=202608161724"></script>
 <script>
 'use strict';
 
@@ -1694,8 +1690,9 @@ function runDemo(kind){
     : (targets[0].querySelector('img')?.src || null);
 
 
-  genDemo.innerHTML = `<div class="hand"><span class="wave"></span><span class="dot"></span>` +
-                      (kind === 'seed' ? `<img class="carry" src="${icon}" alt="">` : '') + `</div>`;
+  genDemo.innerHTML = `<div class="hand"><span class="wave"></span>` +
+                      (kind === 'seed' ? `<img class="carry" src="${icon}" alt="">` : '') +
+                      `<span class="finger">🤏</span></div>`;
   genDemo.classList.add('on');
   const hand = genDemo.querySelector('.hand');
 
