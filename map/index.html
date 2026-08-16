@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Онбординг, вариант 1</title>
-<link rel="stylesheet" href="../shared/generator/generator.css?v=202608161709">
+<link rel="stylesheet" href="../shared/generator/generator.css?v=202608161714">
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
   html,body{margin:0;height:100%;background:#d8c08c;overflow:hidden;overscroll-behavior:none;
@@ -248,11 +248,17 @@
     opacity:0;transition:opacity .18s}
   #genDemo .hand.show{opacity:1}
 
-  /* палец: белый кружок с кольцом — читается как касание */
-  #genDemo .dot{display:block;width:42px;height:42px;border-radius:50%;
-    background:rgba(255,255,255,.95);box-shadow:0 6px 18px rgba(0,0,0,.45);
-    transition:transform .12s var(--ease)}
-  #genDemo .hand.press .dot{transform:scale(.78)}
+  /* Палец и ресурс — один объект: раньше это были два пятна друг над
+     другом и читались как дубль. Кольцо остаётся подложкой касания,
+     ресурс лежит прямо в нём. */
+  #genDemo .dot{display:block;width:46px;height:46px;border-radius:50%;
+    background:rgba(255,255,255,.18);border:2.5px solid rgba(255,255,255,.92);
+    box-shadow:0 6px 18px rgba(0,0,0,.45);
+    transition:transform .12s var(--ease),background .12s}
+  #genDemo .hand.press .dot{transform:scale(.82);background:rgba(255,255,255,.42)}
+  /* когда что-то несём, кольцо уходит на второй план */
+  #genDemo .hand.hold .dot{transform:scale(1.28);background:rgba(255,255,255,.1);
+    border-color:rgba(255,255,255,.55)}
 
   /* волна от нажатия */
   #genDemo .wave{position:absolute;left:50%;top:50%;width:42px;height:42px;margin:-21px 0 0 -21px;
@@ -260,12 +266,12 @@
   #genDemo .hand.press .wave{animation:demoWave .5s ease-out}
   @keyframes demoWave{0%{opacity:.9;transform:scale(.6)}100%{opacity:0;transform:scale(2.3)}}
 
-  /* то, что несём в руке */
-  #genDemo .carry{position:absolute;left:50%;top:-10px;width:56px;height:56px;object-fit:contain;
-    transform:translate(-50%,-100%) scale(.6);opacity:0;
-    transition:transform .18s var(--ease),opacity .18s;
-    filter:drop-shadow(0 8px 14px rgba(0,0,0,.55))}
-  #genDemo .hand.hold .carry{transform:translate(-50%,-100%) scale(1);opacity:1}
+  /* ресурс лежит в самом касании, а не отдельным пятном сверху */
+  #genDemo .carry{position:absolute;left:50%;top:50%;width:54px;height:54px;object-fit:contain;
+    transform:translate(-50%,-50%) scale(.55);opacity:0;
+    transition:transform .2s var(--ease),opacity .18s;
+    filter:drop-shadow(0 6px 12px rgba(0,0,0,.6))}
+  #genDemo .hand.hold .carry{transform:translate(-50%,-50%) scale(1);opacity:1}
 
   /* ячейка, над которой рука прямо сейчас */
   .cell.demoHot{animation:demoHot .32s var(--ease)}
@@ -627,7 +633,7 @@
   </div>
 
 
-<script src="../shared/generator/generator.js?v=202608161709"></script>
+<script src="../shared/generator/generator.js?v=202608161714"></script>
 <script>
 'use strict';
 
@@ -1710,8 +1716,8 @@ function runDemo(kind){
   hand.style.top  = above.y + 'px';
 
   // 1. рука появляется и опускается на ресурс
-  later(() => alive() && hand.classList.add('show'), 40);
-  later(() => alive() && handTo(hand, above, start, 380, 0, () => {
+  later(() => alive() && hand.classList.add('show'), 30);
+  later(() => alive() && handTo(hand, above, start, 260, 0, () => {
     if(!alive()) return;
     // 2. нажатие
     hand.classList.add('press');
@@ -1727,13 +1733,13 @@ function runDemo(kind){
 
       const sweep = () => {
         if(!alive()) return;
-        handTo(hand, first, last, 240 + targets.length * 190, 0,
+        handTo(hand, first, last, 180 + targets.length * 130, 0,
           () => {
             if(!alive()) return;
             // 4. отпускаем и начинаем заново
             hand.classList.remove('hold');
-            later(() => hand.classList.remove('show'), 140);
-            later(() => alive() && runDemo(kind), 900);
+            later(() => hand.classList.remove('show'), 110);
+            later(() => alive() && runDemo(kind), 620);
           },
           x => {
             if(!alive()) return;
@@ -1748,20 +1754,20 @@ function runDemo(kind){
 
       if(kind === 'seed'){
         // ресурс поднят из лотка — переносим его дугой к первой грядке
-        handTo(hand, start, first, 420, 70, () => {
+        handTo(hand, start, first, 300, 62, () => {
           if(!alive()) return;
           tapCell(marks[0].el, icon);
           marks[0].hit = true;
-          later(sweep, 80);
+          later(sweep, 50);
         });
       } else {
         // сбор: палец уже на первой грядке, сразу ведём
         tapCell(marks[0].el, null);
         marks[0].hit = true;
-        later(sweep, 120);
+        later(sweep, 70);
       }
-    }, 260);
-  }), 420);
+    }, 170);
+  }), 140);
 }
 
 /* подсказка уходит, только когда реально взяли зерно из лотка */
