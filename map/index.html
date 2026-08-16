@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Онбординг, вариант 1</title>
-<link rel="stylesheet" href="../shared/generator/generator.css?v=202608161714">
+<link rel="stylesheet" href="../shared/generator/generator.css?v=202608161716">
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
   html,body{margin:0;height:100%;background:#d8c08c;overflow:hidden;overscroll-behavior:none;
@@ -276,12 +276,6 @@
   /* ячейка, над которой рука прямо сейчас */
   .cell.demoHot{animation:demoHot .32s var(--ease)}
   @keyframes demoHot{0%{transform:scale(1)}45%{transform:scale(.86)}100%{transform:scale(1)}}
-
-  /* куда можно класть: мягкая пульсирующая рамка, пока идёт показ */
-  .cell.demoTarget::after{content:"";position:absolute;inset:0;border-radius:var(--cell-radius);
-    box-shadow:inset 0 0 0 2px rgba(255,214,10,.75);animation:demoTarget 1.5s ease-in-out infinite;
-    pointer-events:none}
-  @keyframes demoTarget{0%,100%{opacity:.25}50%{opacity:1}}
 
   /* след: ресурс, оставленный в ячейке во время показа */
   #genDemo .drop{position:absolute;width:44px;height:44px;object-fit:contain;
@@ -633,7 +627,7 @@
   </div>
 
 
-<script src="../shared/generator/generator.js?v=202608161714"></script>
+<script src="../shared/generator/generator.js?v=202608161716"></script>
 <script>
 'use strict';
 
@@ -1639,8 +1633,7 @@ function stopDemo(){
   demoTimers = [];
   genDemo.classList.remove('on');
   genDemo.innerHTML = '';
-  document.querySelectorAll('.cell.demoTarget, .cell.demoHot')
-    .forEach(c => c.classList.remove('demoTarget', 'demoHot'));
+  document.querySelectorAll('.cell.demoHot').forEach(c => c.classList.remove('demoHot'));
 }
 const later = (fn, ms) => demoTimers.push(setTimeout(fn, ms));
 
@@ -1700,7 +1693,6 @@ function runDemo(kind){
     ? (src.querySelector('img')?.src || '../assets/imgcoffe.png')
     : (targets[0].querySelector('img')?.src || null);
 
-  targets.forEach(c => c.classList.add('demoTarget'));
 
   genDemo.innerHTML = `<div class="hand"><span class="wave"></span><span class="dot"></span>` +
                       (kind === 'seed' ? `<img class="carry" src="${icon}" alt="">` : '') + `</div>`;
