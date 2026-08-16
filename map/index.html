@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Онбординг, вариант 1</title>
-<link rel="stylesheet" href="../shared/generator/generator.css?v=202608161702">
+<link rel="stylesheet" href="../shared/generator/generator.css?v=202608161705">
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
   html,body{margin:0;height:100%;background:#d8c08c;overflow:hidden;overscroll-behavior:none;
@@ -627,7 +627,7 @@
   </div>
 
 
-<script src="../shared/generator/generator.js?v=202608161702"></script>
+<script src="../shared/generator/generator.js?v=202608161705"></script>
 <script>
 'use strict';
 
@@ -1441,7 +1441,9 @@ function scNext(){
   const pointsAtDock = st.pointAt && dock.querySelector(st.pointAt);
   dock.classList.toggle('hide', !!(st.text && !overSheet && !placing && !pointsAtDock));
   if(st.focus) focusOn(st.focus);
-  if(st.pointAt) setTimeout(() => pointTo(st.pointAt), st.focus ? 700 : 60);
+  // отложенный показ обязательно с отменой: шаг мог смениться раньше,
+  // и стрелка всплывала уже поверх следующего экрана
+  if(st.pointAt) pointTimer = setTimeout(() => pointTo(st.pointAt), st.focus ? 700 : 60);
 
   scWait = st.wait || null;
   story.querySelector('.next').style.display = scWait ? 'none' : '';
@@ -1515,7 +1517,7 @@ function tweenCamera(to){
 
 /* ─── стрелка на элемент ─── */
 
-let pointSel = null, pointRaf = 0;
+let pointSel = null, pointRaf = 0, pointTimer = 0;
 
 function pointTo(sel){
   pointSel = sel;
@@ -1543,7 +1545,12 @@ function placePoint(){
   point.classList.toggle('on', r.bottom > 0 && r.top < innerHeight);
 }
 
-function hidePoint(){ pointSel = null; cancelAnimationFrame(pointRaf); point.classList.remove('on'); }
+function hidePoint(){
+  clearTimeout(pointTimer);
+  pointSel = null;
+  cancelAnimationFrame(pointRaf);
+  point.classList.remove('on');
+}
 
 /* ─── сценарий внутри генератора ─── */
 
@@ -1694,7 +1701,10 @@ function runDemo(kind){
   genDemo.classList.add('on');
   const hand = genDemo.querySelector('.hand');
 
-  const start = kind === 'seed' ? centerOf(src) : centerOf(targets[0]);
+  // для сбора подводим руку слева от первой грядки: раньше старт совпадал
+  // с ней самой, и рука дёргалась на месте вместо подхода
+  const first0 = centerOf(targets[0]);
+  const start = kind === 'seed' ? centerOf(src) : { x: first0.x - 74, y: first0.y };
   const above = { x: start.x, y: start.y - 90 };
 
   hand.style.left = above.x + 'px';
