@@ -1,509 +1,28 @@
-<!doctype html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Онбординг, вариант 1</title>
-<link rel="stylesheet" href="../shared/generator/generator.css?v=202608161655">
-<style>
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
-  html,body{margin:0;height:100%;background:#d8c08c;overflow:hidden;overscroll-behavior:none;
-    font:400 15px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:#fff}
-  button{font:inherit;cursor:pointer}
+/* ═══════════════════════════════════════════════════════════════
+   Ферма — движок онбординга.
 
-  /* ─── карта ─── */
-  #viewport{position:fixed;inset:0;overflow:hidden;touch-action:none}
-  #canvas{position:absolute;left:0;top:0;width:2600px;height:1533px;transform-origin:0 0}
-  #canvas img.base{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+   Карта, здания, экраны генератора, кофейни и заказов, уровни,
+   размещение построек и проигрыватель сюжета. Всё, что одинаково
+   у всех вариантов онбординга, живёт здесь.
 
-  /* Дед стоит на карте и хочет кофе. Размер человеческий: здание занимает
-     четыре тайла, дед — меньше одного в ширину, иначе он ростом с дом. */
-  #oldman{position:absolute;left:1392px;top:1078px;transform:translate(-50%,-50%);width:30px;
-    pointer-events:none;display:block;visibility:hidden;opacity:0}
-  /* дед приходит, а не возникает: подрастает снизу */
-  #oldman.on{visibility:visible;animation:oldmanin .55s var(--ease) forwards}
-  @keyframes oldmanin{
-    from{opacity:0;transform:translate(-50%,-38%) scale(.86)}
-    to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
-  #oldman img{width:100%;display:block;filter:drop-shadow(0 8px 16px rgba(0,0,0,.45))}
-  /* облачко по деду, а не по экрану: было больше его головы */
-  #oldman .want{position:absolute;left:50%;top:-22px;transform:translateX(-50%);
-    width:24px;height:24px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:12px}
-  #oldman .want::after{content:"";position:absolute;left:50%;bottom:-3px;transform:translateX(-50%);
-    width:5px;height:5px;border-radius:50%;background:#fff}
+   Вариант отличается только сценарием: массив шагов приходит
+   снаружи. Так две версии для теста гарантированно отличаются
+   ровно тем, что мы сравниваем, и ничем больше.
 
-  /* Плитка — просто точка на карте: ширину и высоту задаёт сам спрайт,
-     иначе крупные здания не попадали в свою же зону нажатия. */
-  .plot{position:absolute;width:0;height:0}
-  /* Метка места — ромб ровно в четыре тайла карты, как основание у зданий,
-     нарисованных на самой карте (тайл 83.6×44.1). Центр ромба совпадает
-     с точкой привязки, поэтому здание стоит на нём, а не рядом. */
-  .pad{position:absolute;left:0;top:0;width:127px;height:67px;
-    transform:translate(-50%,-50%);opacity:0;transition:opacity .15s;
-    clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);background:rgba(130,255,160,.95)}
-  .pad::after{content:"";position:absolute;inset:0;clip-path:inherit;transform:scale(.9);
-    background:rgba(40,150,80,.5)}
-  /* ширину и сдвиг вниз ставит отрисовка: у каждой картинки своё основание */
-  .art{position:absolute;left:0;transform:translateX(-50%)}
-  .art img{display:block;width:100%;height:auto}
-  .plot.ghost .art{pointer-events:none}
-  /* невидимая зона нажатия для здания без картинки */
-  .hit{position:absolute;left:0;top:0;transform:translate(-50%,-50%)}
+   createFarm({
+     script,    массив шагов сюжета
+     variant,   метка варианта: свои ключи хранилища
+   })
 
-  /* только что поставленное здание встаёт с отскоком */
-  .plot.pop .art{animation:plotpop .5s cubic-bezier(.34,1.5,.64,1) both}
-  @keyframes plotpop{from{transform:translateX(-50%) translateY(-14px) scale(.86);opacity:0}
-                     to{transform:translateX(-50%);opacity:1}}
+   Шаг сценария:
+     who/text            кто говорит и что
+     wait                какого события ждём вместо тапа
+     focus / pointAt     куда ведём камеру и стрелку
+     gen / orders / level  экраны зданий, заказа и уровня
+     spawn / showOldman / hint   что появляется на карте
+   ═══════════════════════════════════════════════════════════════ */
 
-  /* метка видна только у здания, которое сейчас несут */
-  .plot.ghost .pad{opacity:1;animation:padpulse 1.3s ease-in-out infinite}
-  .plot.ghost .art img{opacity:.95;filter:drop-shadow(0 6px 14px rgba(0,0,0,.45))}
-  @keyframes padpulse{0%,100%{opacity:1}50%{opacity:.62}}
-  .placeRow{display:flex;gap:10px;justify-content:space-between;width:100%}
-  #dock{flex-direction:column;gap:10px}
-
-
-
-  /* чип живёт внутри картинки здания, чтобы висеть над его крышей,
-     а не над точкой привязки: у высоких зданий он оказывался внутри стены */
-  /* Чипы и подписи живут в координатах карты и масштабируются вместе с
-     ней. На новой карте объекты мельче, поэтому и кегль здесь мелкий:
-     на обзоре его всё равно не читают, а при наезде он встаёт в размер. */
-  .chip{position:absolute;left:50%;top:-4px;transform:translate(-50%,-100%);
-    background:#fff;color:#000;border-radius:100px;padding:2px 5px;
-    font-family:inherit;font-size:5px;font-weight:600;line-height:1;white-space:nowrap;
-    box-shadow:0 2px 5px rgba(0,0,0,.3)}
-  .chip.unlock{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
-    font-size:10px;padding:0;animation:bob 1.2s ease-in-out infinite}
-  /* заказ ждёт: облачко с посылкой и зелёной галочкой, как у деда с кофе */
-  .chip.order{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
-    font-size:17px;padding:0;animation:bob 1.6s ease-in-out infinite}
-  .chip.order i{position:absolute;right:-2px;top:-2px;width:15px;height:15px;border-radius:50%;
-    background:#30d158;color:#fff;font-family:inherit;font-size:9px;font-weight:700;line-height:15px;
-    text-align:center;font-style:normal}
-  .chip.order::after{content:"";position:absolute;left:50%;bottom:-5px;transform:translateX(-50%);
-    width:7px;height:7px;border-radius:50%;background:#fff}
-  @keyframes bob{0%,100%{transform:translate(-50%,-100%)}50%{transform:translate(-50%,-125%)}}
-
-  /* подпись — сразу под основанием, ромб основания кончается на 88px ниже точки */
-  .label{position:absolute;left:0;top:14px;transform:translateX(-50%);
-    background:rgba(0,0,0,.6);border-radius:100px;padding:2px 4px;
-    font-family:inherit;font-size:5px;font-weight:600;line-height:1;
-    white-space:nowrap;pointer-events:none}
-
-  /* ─── шапка ─── */
-  #bar{position:fixed;left:0;right:0;top:0;z-index:20;display:flex;align-items:center;gap:8px;
-    padding:14px 16px;background:linear-gradient(#000a,#0000);pointer-events:none}
-  #bar .money{pointer-events:auto;display:flex;gap:8px}
-  .pill{background:rgba(0,0,0,.55);border:0;color:#fff;border-radius:100px;padding:8px 13px;
-    font:600 13px/1 inherit;display:flex;align-items:center;gap:6px}
-  .pill i{width:15px;height:15px;border-radius:50%;display:block}
-  .i-gem{background:radial-gradient(circle at 34% 28%,#7ee0ff,#1a6ee8 72%)}
-  .i-coin{background:radial-gradient(circle at 34% 28%,#ffe066,#f0940a 72%)}
-  #bar .grow{flex:1}
-  #reset{pointer-events:auto}
-
-  /* ─── нижняя кнопка ─── */
-  #dock{position:fixed;left:16px;right:16px;bottom:24px;z-index:20;display:flex;gap:10px;
-    transition:opacity .22s ease, transform .3s var(--ease)}
-  /* пока говорят — уезжает вниз, а не пропадает рывком */
-  #dock.hide{opacity:0;transform:translateY(90px);pointer-events:none}
-  .primary{flex:1;background:#ffd60a;color:#000;border:0;border-radius:14px;padding:16px;
-    font:600 16px/1 inherit;display:flex;align-items:center;justify-content:center;gap:8px}
-  .square{width:56px;background:#ffd60a;color:#000;border:0;border-radius:14px;font-size:20px}
-
-  /* Экраны не появляются рывком: display переключался мгновенно, и каждый
-     переход читался как подмена картинки. Держим их в потоке, а показываем
-     через visibility + opacity, чтобы можно было анимировать. */
-  /* имя не .fade — так называются краевые зоны внутри генератора.
-     Скрытое состояние держим на самом классе: если задать его на #id,
-     он перебьёт .veil.on по специфичности и экран не откроется.
-     Откуда именно выезжает конкретный экран — задаёт переменная. */
-  :root{--ease:cubic-bezier(.22,1,.36,1)}
-  .veil{--shift:translateY(18px);
-    visibility:hidden;opacity:0;transform:var(--shift);
-    transition:opacity .26s ease, transform .34s var(--ease), visibility 0s linear .34s}
-  .veil.on{visibility:visible;opacity:1;transform:none;
-    transition:opacity .24s ease, transform .34s var(--ease), visibility 0s}
-
-  /* ─── каталог построек: два экрана, как в макете ─── */
-  #sheet{--shift:translateY(26px);
-    position:fixed;left:0;top:0;width:100%;height:100%;z-index:40;background:#000;
-    display:flex;flex-direction:column;overflow:hidden}
-  .sheetTop{position:relative;flex:0 0 auto;padding:44px 16px 0}
-  .sheetTop .row{display:flex;align-items:center;gap:8px}
-  .sheetTop .back{border:0;background:none;color:#0a84ff;font:300 34px/1 inherit;
-    padding:0 8px 4px 0;margin-right:auto}
-  .sheetTop h2{margin:16px 0 0;font-size:34px;font-weight:700;letter-spacing:-.5px;color:rgba(255,255,255,.28)}
-
-  /* экран категорий */
-  #cats{flex:1;overflow-y:auto;padding:20px 16px 32px;display:flex;flex-direction:column;gap:16px}
-  .cat{position:relative;background:#1c1c1e;border-radius:20px;padding:20px 16px 24px;text-align:center}
-  .cat b{display:block;font-size:20px;font-weight:700;margin-bottom:14px}
-  .cat img{width:100%;height:190px;object-fit:contain;display:block}
-  .cat .dot{position:absolute;right:18px;top:18px;width:9px;height:9px;border-radius:50%;background:#ff453a}
-
-  /* экран одной категории: карусель зданий */
-  #items{flex:1;display:none;align-items:center;gap:14px;overflow-x:auto;padding:0 44px;
-    scroll-snap-type:x mandatory;scrollbar-width:none}
-  #items::-webkit-scrollbar{display:none}
-  #items.on{display:flex}
-  .card{flex:0 0 268px;scroll-snap-align:center;background:#1c1c1e;border-radius:22px;
-    padding:16px;text-align:center}
-  .card .n{display:inline-block;background:rgba(255,255,255,.12);border-radius:100px;
-    padding:5px 12px;font:600 13px/1 inherit;margin-bottom:10px}
-  .card b{display:block;font-size:22px;font-weight:700;margin-bottom:12px}
-  .card img{width:100%;height:210px;object-fit:contain;display:block;margin-bottom:16px}
-  .card .buy{width:100%;background:#ffd60a;color:#000;border:0;border-radius:14px;padding:15px;
-    font:600 17px/1 inherit;display:flex;align-items:center;justify-content:center;gap:8px}
-  /* монета — та же, что в шапке: эмодзи рисовалось серым блином */
-  .card .buy i{width:18px;height:18px;border-radius:50%;display:block}
-  .card.locked{opacity:.45}
-
-  /* ─── конфетти ─── */
-  /* поверх всего: сыплется и на карте, и на экране уровня */
-  #confetti{position:fixed;inset:0;z-index:90;pointer-events:none;overflow:hidden;display:none}
-  #confetti.on{display:block}
-  #confetti span{position:absolute;width:9px;height:14px;border-radius:2px;animation:fall 1.5s ease-out forwards}
-  @keyframes fall{
-    0%{transform:translate(0,0) rotate(0);opacity:1}
-    100%{transform:translate(var(--dx),110vh) rotate(720deg);opacity:0}
-  }
-
-  /* ─── превью перед онбордингом ─── */
-  /* Человек на тесте видит его первым: коротко — что за игра, что он
-     сейчас сделает и сколько это займёт. Длинный текст тут не читают. */
-  #intro{--shift:scale(.97);position:fixed;inset:0;z-index:85;display:flex;flex-direction:column;
-    align-items:center;text-align:center;padding:52px 22px 30px;
-    background:radial-gradient(120% 65% at 50% 14%,#243252 0%,#0a0a0f 60%,#000 100%)}
-  #intro .hero{width:186px;height:186px;object-fit:contain;flex:0 0 auto;
-    filter:drop-shadow(0 18px 40px rgba(255,214,10,.28))}
-  #intro .logo{margin-top:6px;font-size:36px;font-weight:700;letter-spacing:-.6px}
-  #intro .logo b{color:#ffd60a}
-  #intro .lead{margin-top:12px;color:#a5a5ad;font-size:19px;font-weight:600;line-height:1.3}
-  #intro ol{list-style:none;margin:30px 0 0;padding:0;display:flex;flex-direction:column;gap:10px;
-    width:100%;max-width:330px;text-align:left}
-  #intro li{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.07);
-    border-radius:14px;padding:13px 15px;font-size:15px;font-weight:500}
-  /* цифру центрируем гридом, а размер задаём отдельными свойствами:
-     короткая запись font со словом inherit невалидна и отбрасывалась,
-     из-за чего цифра наследовала кегль пункта и сидела не по центру */
-  #intro li span{width:26px;height:26px;flex:0 0 auto;border-radius:50%;background:#ffd60a;color:#000;
-    display:grid;place-items:center;
-    font-family:inherit;font-size:13px;font-weight:700;line-height:1}
-  #intro .note{margin-top:20px;color:#6f6f78;font-size:13px;line-height:1.4;max-width:300px}
-  #intro .go{margin-top:auto;width:100%;background:#ffd60a;color:#000;border:0;border-radius:14px;
-    padding:17px;font-family:inherit;font-size:17px;font-weight:600;line-height:1}
-  #intro .go:active{transform:scale(.98)}
-  #intro.on .hero{animation:medalpop .6s cubic-bezier(.34,1.5,.64,1) both}
-  #intro.on .logo{animation:lvlrise .45s var(--ease) .1s both}
-  #intro.on .lead{animation:lvlrise .45s var(--ease) .16s both}
-  #intro.on li:nth-child(1){animation:lvlrise .45s var(--ease) .24s both}
-  #intro.on li:nth-child(2){animation:lvlrise .45s var(--ease) .3s both}
-  #intro.on li:nth-child(3){animation:lvlrise .45s var(--ease) .36s both}
-  #intro.on .note{animation:lvlrise .45s var(--ease) .42s both}
-  #intro.on .go{animation:lvlrise .45s var(--ease) .48s both}
-
-  /* ─── экран здания ─── */
-  #screen{--shift:scale(.96);position:fixed;inset:0;z-index:50;background:#000;display:block}
-  #screen .back{position:absolute;left:8px;top:44px;z-index:60;border:0;background:none;
-    color:#0a84ff;font:300 26px/24px inherit;padding:8px}
-  /* Генератор и кофейня — два экрана одного вида. Держим оба в потоке:
-     с display:none модуль мерил бы нулевые размеры и собирал сетку кривой.
-     Переключаем прозрачностью, а не видимостью — visibility:visible на
-     хосте перебивал бы скрытый #screen, и закрытый экран продолжал бы
-     ловить касания по всей карте. */
-  #screen .host{position:absolute;inset:0;opacity:0;pointer-events:none}
-  #screen .host.on{opacity:1;pointer-events:auto}
-
-
-  /* ─── сцена внутри кофейни ─── */
-  .scene{position:relative;height:190px;display:flex;align-items:flex-end;justify-content:center;gap:6px;
-    padding:0 18px}
-  .scene .who{height:150px;width:auto;display:block;filter:drop-shadow(0 10px 20px rgba(0,0,0,.5))}
-  .scene .machine{width:148px;height:146px;display:block}
-  .scene .led{animation:ledblink 1.6s ease-in-out infinite}
-  @keyframes ledblink{0%,100%{opacity:1}50%{opacity:.25}}
-  .scene .steam{animation:steamup 2.4s ease-in-out infinite;transform-origin:center bottom}
-  .scene .steam.s2{animation-delay:.8s}
-  @keyframes steamup{
-    0%{opacity:0;transform:translateY(6px)}
-    30%{opacity:.6}
-    100%{opacity:0;transform:translateY(-10px)}}
-
-  /* ─── подсказки внутри генератора ─── */
-  #genSpeech{--shift:translateY(-10px);
-    position:fixed;left:16px;right:16px;z-index:70;display:flex;align-items:flex-start;gap:12px;
-    pointer-events:none}
-  #genSpeech img{flex:0 0 auto;width:66px;height:66px;object-fit:contain}
-  #genSpeech .b{background:#3a3a3c;border-radius:18px;padding:14px 16px;
-    font-size:15px;line-height:normal;font-weight:600;letter-spacing:-.24px;
-    box-shadow:0 8px 24px rgba(0,0,0,.5)}
-
-  /* ═══ демонстрация жеста: рука берёт ресурс и раскладывает по грядкам ═══ */
-  #genDemo{position:fixed;inset:0;z-index:69;pointer-events:none;display:none}
-  #genDemo.on{display:block}
-
-  #genDemo .hand{position:absolute;left:0;top:0;transform:translate(-50%,-50%);
-    opacity:0;transition:opacity .18s}
-  #genDemo .hand.show{opacity:1}
-
-  /* палец: белый кружок с кольцом — читается как касание */
-  #genDemo .dot{display:block;width:42px;height:42px;border-radius:50%;
-    background:rgba(255,255,255,.95);box-shadow:0 6px 18px rgba(0,0,0,.45);
-    transition:transform .12s var(--ease)}
-  #genDemo .hand.press .dot{transform:scale(.78)}
-
-  /* волна от нажатия */
-  #genDemo .wave{position:absolute;left:50%;top:50%;width:42px;height:42px;margin:-21px 0 0 -21px;
-    border-radius:50%;border:3px solid rgba(255,255,255,.9);opacity:0}
-  #genDemo .hand.press .wave{animation:demoWave .5s ease-out}
-  @keyframes demoWave{0%{opacity:.9;transform:scale(.6)}100%{opacity:0;transform:scale(2.3)}}
-
-  /* то, что несём в руке */
-  #genDemo .carry{position:absolute;left:50%;top:-10px;width:56px;height:56px;object-fit:contain;
-    transform:translate(-50%,-100%) scale(.6);opacity:0;
-    transition:transform .18s var(--ease),opacity .18s;
-    filter:drop-shadow(0 8px 14px rgba(0,0,0,.55))}
-  #genDemo .hand.hold .carry{transform:translate(-50%,-100%) scale(1);opacity:1}
-
-  /* ячейка, над которой рука прямо сейчас */
-  .cell.demoHot{animation:demoHot .32s var(--ease)}
-  @keyframes demoHot{0%{transform:scale(1)}45%{transform:scale(.86)}100%{transform:scale(1)}}
-
-  /* куда можно класть: мягкая пульсирующая рамка, пока идёт показ */
-  .cell.demoTarget::after{content:"";position:absolute;inset:0;border-radius:var(--cell-radius);
-    box-shadow:inset 0 0 0 2px rgba(255,214,10,.75);animation:demoTarget 1.5s ease-in-out infinite;
-    pointer-events:none}
-  @keyframes demoTarget{0%,100%{opacity:.25}50%{opacity:1}}
-
-  /* след: ресурс, оставленный в ячейке во время показа */
-  #genDemo .drop{position:absolute;width:44px;height:44px;object-fit:contain;
-    transform:translate(-50%,-50%);animation:demoDrop .5s ease-out forwards}
-  @keyframes demoDrop{0%{opacity:.95;transform:translate(-50%,-70%) scale(1.05)}
-                      100%{opacity:0;transform:translate(-50%,-50%) scale(.8)}}
-    8%{opacity:1;transform:scale(1)}
-    88%{offset-distance:100%;opacity:1;transform:scale(1)}
-    100%{offset-distance:100%;opacity:0;transform:scale(.75)}}
-
-  /* транслейт по X нужен всегда, поэтому появление играем масштабом внутри */
-  #boostTip{position:fixed;z-index:71;transform:translate(-50%,0);
-    visibility:hidden;opacity:0;transition:opacity .2s ease, visibility 0s linear .2s}
-  #boostTip.on{visibility:visible;opacity:1;transition:opacity .2s ease, visibility 0s}
-  #boostTip.on .box{animation:tippop .34s var(--ease) both}
-  @keyframes tippop{from{transform:scale(.8) translateY(-8px);opacity:0}to{transform:none;opacity:1}}
-  #boostTip .box{background:#428bf9;border-radius:16px;padding:12px 14px;min-width:150px;text-align:center;
-    box-shadow:0 10px 26px rgba(0,0,0,.5);position:relative}
-  #boostTip .box b{display:block;font-size:16px;font-weight:700;margin-bottom:8px}
-  #boostTip .time{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.18);
-    border-radius:100px;padding:5px 10px;font-size:13px;font-weight:500}
-  #boostTip .boost{display:block;width:100%;margin-top:8px;background:#ffd60a;color:#000;border:0;
-    border-radius:100px;padding:9px 12px;font:600 14px/1 inherit}
-  #boostTip .nose{position:absolute;left:50%;top:-7px;transform:translateX(-50%) rotate(45deg);
-    width:14px;height:14px;background:#428bf9;border-radius:3px}
-
-  /* ─── экран заказов ─── */
-  /* Собран руками, а не модулем генератора: механики грядок тут нет,
-     есть карточка заказа. Обвязка повторяет остальные экраны зданий. */
-  /* снизу оставлено место под подсказку со стрелкой — иначе бабл ложится
-     ровно на кнопку отправки */
-  #orders{--shift:scale(.96);position:fixed;inset:0;z-index:52;background:#000;
-    display:flex;flex-direction:column;padding:44px 16px 132px}
-  /* Стрелка «назад» крупная, как в макете: тонкий значок в углу
-     терялся. Остальная шапка приглушена — так задумано в онбординге. */
-  #orders .back{position:absolute;left:10px;top:40px;width:44px;height:44px;border:0;
-    background:none;padding:0;font-size:0}
-  #orders .back::before{content:"";display:block;width:17px;height:17px;margin-left:8px;
-    border-left:4px solid #0a84ff;border-bottom:4px solid #0a84ff;border-radius:2px;
-    transform:rotate(45deg)}
-  #orders .obar{display:flex;justify-content:flex-end;gap:10px;height:28px}
-  #orders .badge{height:28px;border-radius:100px;background:#1c1c1e;display:flex;align-items:center;
-    gap:6px;padding:0 10px;font:600 13px/1 inherit;color:rgba(255,255,255,.45)}
-  #orders .badge i{width:16px;height:16px;border-radius:50%;display:block}
-  #orders .badge.ring{border:2px solid rgba(66,139,249,.5);background:none}
-  #orders h2{margin:22px 0 0;font-size:30px;font-weight:700;color:rgba(255,255,255,.32);
-    display:flex;align-items:center;gap:10px}
-  /* Размер пишем отдельными свойствами: в короткой записи font слово
-     inherit невалидно как имя шрифта, всё правило отбрасывается — и «i»
-     наследовал 30px заголовка, вылезая из кружка. */
-  #orders h2 .info{width:24px;height:24px;border-radius:50%;background:#2c2c2e;color:#fff;
-    font-family:inherit;font-size:13px;font-weight:700;line-height:24px;
-    text-align:center;font-style:normal}
-
-  /* заказчики */
-  #orders .clients{display:flex;gap:12px;margin-top:18px}
-  #orders .client{position:relative;width:76px;height:76px;border-radius:50%;padding:0;
-    border:3px solid transparent;background:#1c1c1e;overflow:visible}
-  #orders .client.on{border-color:#ffd60a}
-  #orders .client img{width:100%;height:100%;border-radius:50%;object-fit:cover;object-position:50% 12%;
-    display:block}
-  #orders .client .ok{position:absolute;right:-2px;top:-2px;width:26px;height:26px;border-radius:50%;
-    background:#30d158;color:#fff;font-family:inherit;font-size:14px;font-weight:700;
-    line-height:26px;text-align:center}
-
-  /* карточка заказа */
-  #orders .card{position:relative;margin-top:12px;background:#1c1c1e;border-radius:22px;
-    padding:16px 16px 14px;display:flex;flex-direction:column;flex:1 1 auto;min-height:0;
-    max-height:430px}
-  #orders .card::before{content:"";position:absolute;left:38px;top:-8px;width:18px;height:18px;
-    background:#1c1c1e;transform:rotate(45deg);border-radius:4px}
-  #orders .chead{position:relative;text-align:center;font-size:19px;font-weight:700}
-  #orders .reroll{position:absolute;right:0;top:-4px;width:38px;height:38px;border-radius:50%;
-    border:0;background:#2c2c2e;color:#0a84ff;font-size:19px}
-  #orders .need{display:flex;justify-content:center;margin-top:14px}
-  /* количество живёт внутри плитки, а не подписью под ней */
-  #orders .slot{position:relative;width:82px;height:92px;border-radius:16px;background:#2c2c2e;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding-bottom:4px}
-  #orders .slot img{width:52px;height:52px;object-fit:contain}
-  #orders .slot b{font-size:14px;font-weight:700}
-  #orders .slot .ok{position:absolute;right:-6px;top:-6px;width:26px;height:26px;border-radius:50%;
-    background:#30d158;color:#fff;font-family:inherit;font-size:14px;font-weight:700;
-    line-height:26px;text-align:center}
-  #orders .rewtitle{margin-top:auto;display:flex;align-items:center;gap:12px;
-    color:#8e8e93;font-size:14px}
-  #orders .rewtitle span{flex:1;height:1px;background:rgba(255,255,255,.14)}
-  #orders .rewards{display:flex;justify-content:center;gap:12px;margin-top:12px}
-  #orders .rewards b{display:inline-flex;align-items:center;gap:8px;background:#2c2c2e;
-    border-radius:100px;padding:9px 16px;font-size:16px;font-weight:700}
-  #orders .rewards i{width:20px;height:20px;border-radius:50%;display:block}
-  #orders .send{margin-top:18px;width:100%;background:#ffd60a;color:#000;border:0;border-radius:14px;
-    padding:17px;font:600 17px/1 inherit}
-  #orders .send:active{transform:scale(.99)}
-
-  /* награда улетает в счётчики наверху */
-  .fly{position:fixed;z-index:95;pointer-events:none;width:26px;height:26px;border-radius:50%;
-    transition:transform .75s cubic-bezier(.4,0,.7,1), opacity .75s ease}
-
-  /* ─── финальная спасибка ─── */
-  /* Экран для тестировщика, а не для игрока: он закрывает прогон и говорит,
-     что путь пройден целиком. Собран как экран уровня, чтобы не выбиваться. */
-  #finish{--shift:scale(.97);position:fixed;inset:0;z-index:82;display:flex;flex-direction:column;
-    align-items:center;justify-content:center;text-align:center;padding:64px 24px 110px;
-    background:radial-gradient(90% 45% at 50% 32%,#16281c 0%,#000 72%)}
-  /* Картинка горизонтальная, показываем целиком. Класс не .cat: так
-     называются карточки категорий в каталоге, оттуда приезжали чужие
-     поля и фон, из-за которых у фото были прямые углы в рамке. */
-  #finish .pic{width:min(100%,320px);height:auto;border-radius:20px;display:block}
-  #finish .pic.none{width:230px;height:230px;display:grid;place-items:center;
-    font-size:120px;background:#1c1c1e;border-radius:26px}
-  #finish h2{margin:26px 0 0;font-size:30px;font-weight:700;letter-spacing:-.3px}
-  #finish p{margin:12px 0 0;color:#8e8e93;font-size:15px;line-height:1.35;max-width:290px}
-  #finish.on .pic{animation:medalpop .6s cubic-bezier(.34,1.5,.64,1) both}
-  #finish.on h2{animation:lvlrise .45s var(--ease) .12s both}
-  #finish .done{position:absolute;left:24px;right:24px;bottom:34px;background:#ffd60a;color:#000;
-    border:0;border-radius:14px;padding:17px;
-    font-family:inherit;font-size:16px;font-weight:600;line-height:1}
-  #finish .done:active{transform:scale(.98)}
-  #finish.on p{animation:lvlrise .45s var(--ease) .2s both}
-  #finish.on .done{animation:lvlrise .45s var(--ease) .3s both}
-
-  /* ─── экран нового уровня ─── */
-  /* Появляется не разом: сперва подложка, потом медаль, потом строчки —
-     иначе это читается как вырубленный свет, а не как награда. */
-  #level{position:fixed;inset:0;z-index:80;display:flex;flex-direction:column;
-    align-items:center;padding:64px 20px 34px;text-align:center;
-    background:radial-gradient(90% 45% at 50% 26%,#0d2233 0%,#000 70%);
-    visibility:hidden;opacity:0;transition:opacity .34s ease, visibility 0s linear .34s}
-  #level.on{visibility:visible;opacity:1;transition:opacity .3s ease, visibility 0s}
-  #level .close{position:absolute;left:16px;top:52px;border:0;background:none;
-    color:#0a84ff;font:400 17px/1 inherit;padding:6px}
-  #level .medal{position:relative;width:128px;height:128px;margin-top:86px;
-    display:grid;place-items:center;filter:drop-shadow(0 10px 34px rgba(2,157,224,.45))}
-  #level .medal img{width:100%;height:100%;display:block}
-  #level .medal span{position:absolute;font-size:44px;font-weight:700;letter-spacing:-1px;
-    text-shadow:0 2px 10px rgba(0,40,70,.55)}
-  #level h2{margin:24px 0 0;font-size:30px;font-weight:700;letter-spacing:-.3px}
-  #level .sub{margin:14px 0 0;color:#8e8e93;font-size:15px}
-  /* награда — двумя валютами, как в макете */
-  #level .reward{margin-top:10px;display:flex;gap:10px;justify-content:center}
-  #level .reward b{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.1);
-    border-radius:100px;padding:8px 14px;font-size:15px;font-weight:600}
-  #level .reward i{width:18px;height:18px;border-radius:50%;display:block}
-  #level .got{margin-top:44px;color:#8e8e93;font-size:14px}
-  #level .items{display:flex;gap:12px;margin-top:12px}
-  #level .items div{width:74px;height:74px;border-radius:14px;background:rgba(255,255,255,.1);
-    display:grid;place-items:center;font-size:34px;overflow:hidden}
-  #level .items img{width:88%;height:88%;object-fit:contain}
-  #level .take{margin-top:auto;width:100%;background:#ffd60a;color:#000;border:0;border-radius:14px;
-    padding:17px;font:600 16px/1 inherit}
-  #level .take:active{transform:scale(.98)}
-
-  /* выезд по очереди: медаль с отскоком, остальное — снизу вверх */
-  #level.on .medal{animation:medalpop .6s cubic-bezier(.34,1.5,.64,1) both}
-  #level.on h2{animation:lvlrise .45s var(--ease) .12s both}
-  #level.on .sub{animation:lvlrise .45s var(--ease) .18s both}
-  #level.on .reward{animation:lvlrise .45s var(--ease) .26s both}
-  #level.on .got{animation:lvlrise .45s var(--ease) .34s both}
-  #level.on .items div{animation:medalpop .5s cubic-bezier(.34,1.5,.64,1) both}
-  #level.on .items div:nth-child(1){animation-delay:.42s}
-  #level.on .items div:nth-child(2){animation-delay:.5s}
-  #level.on .take{animation:lvlrise .45s var(--ease) .6s both}
-  @keyframes medalpop{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
-  @keyframes lvlrise{from{transform:translateY(16px);opacity:0}to{transform:none;opacity:1}}
-
-  /* ═══ сюжетный слой онбординга ═══ */
-  /* панель стоит над кнопкой «Постройки», иначе перекрывает её и флоу встаёт;
-     касания ловит только на шагах, которые листаются тапом */
-  #story{--shift:translateY(18px);
-    position:fixed;left:0;right:0;bottom:0;z-index:60;display:block;padding:0 12px 22px;
-    pointer-events:none}
-  #story.tap{pointer-events:auto}
-  /* Ловушка на весь экран: реплику листает тап где угодно, а не только по
-     баблу. Заодно на время реплики карта не ездит под пальцем. Включается
-     только на шагах, которые ничего не ждут. */
-  #tapcatch{position:fixed;inset:0;z-index:59;display:none}
-  #tapcatch.on{display:block}
-  /* смена реплики: бабл подхватывается заново, персонаж — только когда меняется */
-  #story.swap .bubble{animation:bubblein .34s var(--ease)}
-  #story.swapWho .who img{animation:heroin .38s var(--ease)}
-  @keyframes bubblein{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}
-  @keyframes heroin{from{transform:translateY(24px) scale(.94);opacity:0}to{transform:none;opacity:1}}
-  /* Картинки персонажей обрезаны по пояс. Между срезом и баблом зияла
-     чёрная дыра, поэтому бабл поднят вплотную: срез уходит под него,
-     а плашка с именем ложится на самый край. */
-  /* Фигура стоит ровно на границе бабла: ни зазора, ни наезда на текст.
-     Отступа между ними нет — раньше там зияла чёрная полоса. */
-  #story .who{position:relative;display:flex;align-items:flex-end;gap:0;margin-left:4px}
-  #story .who img{height:150px;width:auto;display:block;filter:drop-shadow(0 8px 18px rgba(0,0,0,.5))}
-  #story .who .name{position:absolute;left:14px;bottom:-11px;z-index:2;border-radius:8px;padding:4px 10px;
-    font:700 13px/1 inherit;color:#fff}
-  #story .who .name.grandson{background:#d5341f}
-  #story .who .name.granny{background:#7b5cff}
-  /* Бабл поверх персонажа, плашка с именем — поверх бабла. Иначе фигура
-     наезжает на реплику и закрывает начало строки. */
-  /* типографика реплик из макета: SF Pro Text Semibold 15, трекинг −0.24,
-     интерлиньяж авто. Семейство приходит от body, там уже SF Pro Text */
-  /* Высота фиксирована под четыре строки: короткая реплика не должна
-     поднимать панель, иначе персонаж и бабл прыгают на каждом шаге. */
-  #story .bubble{margin-top:0;background:#1c1c1e;border-radius:18px;padding:18px 18px 22px;
-    min-height:110px;
-    font-size:15px;line-height:normal;font-weight:600;letter-spacing:-.24px;
-    position:relative;z-index:1;box-shadow:0 10px 30px rgba(0,0,0,.6)}
-  /* значок «дальше» — только подсказка: листает тап по всей панели */
-  #story .bubble .next{position:absolute;right:10px;bottom:6px;color:#ffd60a;font-size:20px;
-    border:0;background:none;padding:6px 10px;pointer-events:auto;
-    animation:nextnudge 1.4s ease-in-out infinite}
-  @keyframes nextnudge{0%,100%{transform:translateY(0);opacity:.75}50%{transform:translateY(3px);opacity:1}}
-
-  /* стрелка-указатель на элемент интерфейса */
-  #point{position:fixed;z-index:62;font-size:44px;color:#ffd60a;pointer-events:none;
-    filter:drop-shadow(0 4px 10px rgba(0,0,0,.5));
-    visibility:hidden;opacity:0;transition:opacity .25s ease, visibility 0s linear .25s}
-  #point.on{visibility:visible;opacity:1;transition:opacity .25s ease .1s, visibility 0s;
-    animation:pnudge .9s ease-in-out infinite}
-  @keyframes pnudge{0%,100%{transform:translate(0,0)}50%{transform:translate(0,10px)}}
-
-  /* зёрна улетают за экран после ускорения */
-  .flyaway{position:fixed;z-index:75;width:44px;height:44px;pointer-events:none;
-    animation:flyoff .7s cubic-bezier(.4,0,.7,1) forwards}
-  @keyframes flyoff{to{transform:translate(60vw,-70vh) scale(.35);opacity:0}}
-
-  #hintline{position:fixed;left:16px;right:16px;bottom:96px;z-index:20;text-align:center;
-    font-size:13px;text-shadow:0 1px 4px rgba(0,0,0,.8);pointer-events:none}
-</style>
-</head>
-<body>
-
+const FARM_MARKUP = String.raw`
 <div id="viewport"><div id="canvas">
   <img class="base" src="../assets/map/map2.webp" alt="">
   <div id="oldman"><span class="want">☕</span><img src="../assets/map/oldman on map.png" alt=""></div>
@@ -584,11 +103,9 @@
     </div>
     <h2>Заказы <i class="info">i</i></h2>
 
-    <!-- заказ делаем для Дядь Васи: он и стоит первым, отмеченным.
-         Весь сюжет ведёт именно к его чашке американо -->
     <div class="clients">
-      <button class="client on"><img src="../assets/onboarding/oldman and cofe.png" alt=""><span class="ok">✓</span></button>
-      <button class="client"><img src="../assets/onboarding/Granny.png" alt=""></button>
+      <button class="client on"><img src="../assets/onboarding/Granny.png" alt=""><span class="ok">✓</span></button>
+      <button class="client"><img src="../assets/onboarding/oldman and cofe.png" alt=""><span class="ok">✓</span></button>
     </div>
 
     <div class="card">
@@ -628,11 +145,15 @@
     </div>
     <button class="take">Забрать награду</button>
   </div>
+`;
 
-
-<script src="../shared/generator/generator.js?v=202608161655"></script>
-<script>
 'use strict';
+
+window.createFarm = function createFarm(opts){
+opts = opts || {};
+
+const VARIANT = opts.variant || 'v1';
+document.body.insertAdjacentHTML('afterbegin', FARM_MARKUP);
 
 /* ═══════════ ДАННЫЕ ═══════════ */
 
@@ -699,7 +220,7 @@ function snapIso(x, y){
   return { x: (v - u) / (2*ISO_S), y: (u + v) / 2 };
 }
 
-const KEY = 'farm-map-v2';
+const KEY = 'farm-map-' + VARIANT;
 let coins = 5000;
 let built = [];        // { id, itemId, state, endsAt, flip, x, y }
 let seq = 1;
@@ -1113,7 +634,7 @@ const CUP = 'data:image/svg+xml;utf8,' + encodeURIComponent(
 /* В лотке только кофе: закрытые под замком клубника с бананом на обучении
    ничего не объясняют, а внимание оттягивают. */
 const gen0 = createGenerator(document.getElementById('app'), {
-  assets:'../assets', storeKey:'farm-onb-generator',
+  assets:'../assets', storeKey:'farm-gen-' + VARIANT,
   mode:'single', cells:5, chrome:false, dim:true,
   version:'direct', back:false, title:'Генератор',
   types:[{ id:'coffee', name:'Кофейное зерно', growMs:40*1000, image:'../assets/imgcoffe.png' }]
@@ -1149,7 +670,7 @@ const CAFE_HERO = `
   </div>`;
 
 const cafeGen = createGenerator(document.getElementById('app2'), {
-  assets:'../assets', storeKey:'farm-onb-cafe',
+  assets:'../assets', storeKey:'farm-cafe-' + VARIANT,
   mode:'single', cells:5, chrome:false, dim:true,
   version:'direct', back:false, title:'Кофейня', hero:CAFE_HERO,
   types:[{ id:'americano', name:'Американо', growMs:40*1000, image:CUP }]
@@ -1187,7 +708,39 @@ function closeGenerator(){
    после ускорения. */
 
 const ordersBox = document.getElementById('orders');
-ordersBox.querySelector('.slot img').src = CUP;
+
+/* Что за заказ висит на доске, задаёт сценарий: кто заказчик, что нужно и
+   сколько уже есть. Пока не хватает — счётчик красный, галочки нет, кнопка
+   гаснет. Так экран умеет показывать и готовый заказ, и невыполнимый. */
+const ORDER_ITEMS = { bean:'../assets/imgcoffe.png', cup:CUP };
+
+function setOrder(cfg){
+  const c = Object.assign({ client:0, item:'cup', have:5, need:1 }, cfg || {});
+  const done = c.have >= c.need;
+
+  ordersBox.querySelector('.slot img').src = ORDER_ITEMS[c.item] || ORDER_ITEMS.cup;
+  const count = ordersBox.querySelector('.slot b');
+  count.textContent = c.have + '/' + c.need;
+  count.classList.toggle('short', !done);
+  ordersBox.querySelector('.slot .ok').style.display = done ? '' : 'none';
+  ordersBox.querySelector('.slot').classList.toggle('short', !done);
+
+  // Выбранный заказчик встаёт первым — карточка своим хвостиком смотрит на
+  // него. Кого выбрали, показывает жёлтая обводка, а зелёная галочка только
+  // то, что заказ реально можно закрыть: иначе она обещала выполнимость,
+  // когда ресурса нет.
+  ordersBox.querySelectorAll('.client').forEach((el, i) => {
+    const on = i === c.client;
+    el.classList.toggle('on', on);
+    el.style.order = on ? 0 : 1;
+    el.querySelector('.ok').style.display = (on && done) ? '' : 'none';
+  });
+
+  const send = ordersBox.querySelector('.send');
+  send.disabled = !done;
+  send.classList.toggle('off', !done);
+}
+setOrder();
 
 function openOrders(){
   ordersBox.classList.add('on');
@@ -1197,6 +750,8 @@ function openOrders(){
 ordersBox.querySelector('.back').addEventListener('click', () => {
   ordersBox.classList.remove('on');
   hideGenHint();
+  hidePoint();
+  if(scWait === 'ordersClosed') return scFire('ordersClosed');
   // вышел посреди обучения — зовём обратно, как и в других зданиях
   if(SCRIPT[sc]?.orders){
     sc = SCRIPT.findIndex(s => s.wait === 'ordersOpened') - 1;
@@ -1205,7 +760,9 @@ ordersBox.querySelector('.back').addEventListener('click', () => {
 });
 
 /* Награда летит в счётчики наверху — те же, что в шапке карты.
-   Дальше экран закрывается и приходит новый уровень. */
+   Дальше приходит уровень. Экран заказа при этом может остаться открытым:
+   если сценарий продолжается на нём же, закрывать его незачем — человек
+   всё это время сидит в одном экране и лишних переходов видеть не должен. */
 ordersBox.querySelector('.send').addEventListener('click', () => {
   hideGenHint();
   hidePoint();
@@ -1214,10 +771,11 @@ ordersBox.querySelector('.send').addEventListener('click', () => {
     for(let n = 0; n < 4; n++) flyReward(from, targets[k === 0 ? 1 : 0], n * 90);
   });
   ordersBox.querySelector('.send').disabled = true;
+  const stay = !!SCRIPT[sc]?.stay;
   setTimeout(() => {
-    ordersBox.classList.remove('on');
+    if(!stay) ordersBox.classList.remove('on');
     ordersBox.querySelector('.send').disabled = false;
-    setTimeout(scNext, 380);
+    setTimeout(scNext, stay ? 80 : 380);
   }, 900);
 });
 
@@ -1243,6 +801,8 @@ function flyReward(from, to, delay){
 screen.querySelector('.back').addEventListener('click', () => {
   closeGenerator();
   levelBox.classList.remove('on');
+  hidePoint();
+  if(scWait === 'screenClosed') return scFire('screenClosed');
   if(inGenPart()){
     genWait = null;
     // отматываем к приглашению зайти именно в это здание, а не всегда в генератор
@@ -1309,56 +869,7 @@ const CAST = {
   granny:   { name:'Бабуся',  img:'../assets/onboarding/Granny.png', cls:'granny' },
 };
 
-/* Сюжет держится на одном желании: внуку нужен кофе. Дальше цепочка
-   без разрывов — зерно, кофейня, чашка. Каждая реплика либо двигает
-   желание, либо объясняет следующее действие; болтовни ради болтовни нет.
-
-   Про латте и американо. Дед просит чёрный — это видно по чашке в его
-   облачке. Внук хочет латте на безлактозном. Разные напитки не ошибка,
-   а сама шутка: на финале кофейня делает оба. */
-const SCRIPT = [
-  { who:'grandson', text:'Наконец-то добрался до поселения! Планов много: производства, бизнесы, кофейня. Но первым делом хочу нормальный кофе!' },
-  { who:'granny',   text:'Кофейня дело хорошее! Только кофе из воздуха не сваришь: сперва зерно вырасти, а бизнес потом' },
-  { who:'grandson', text:'Вот об этом я и не подумал! В технологиях я разбираюсь, а в деревенских нет. С чего начнём?' },
-
-  // камера подъезжает к генератору, над ним стрелка
-  { who:'granny', text:'Начни с генератора, он и растит зёрна. Нажимай, покажу!',
-    focus:'generator', pointAt:'.plot[data-id="gen"]', wait:'generatorOpened' },
-
-  // ── внутри генератора ──
-  { gen:'seed' },
-  { gen:'boost' },
-
-  // ── обратно на карту: уровень, потом наезд камеры на деда ──
-  { level:2 },
-  { who:'granny', text:'А вот и Дядь Вася, наш первый ценитель кофе! Ему бы чашечку покрепче, и обязательно без молока',
-    focus:'oldman', showOldman:true },
-  { who:'grandson', text:'Зёрна есть, а варить негде. Пора строить кофейню!' },
-  // без реплики: панель ушла, на экране осталась кнопка и стрелка на неё
-  { pointAt:'#openSheet', wait:'sheetOpened' },
-  { pointAt:'[data-cat="Преобразователи"]', wait:'catOpened' },
-  { who:'grandson', text:'Вот она! Берём',
-    pointAt:'[data-item="coffee"]', wait:'placing' },
-  { hint:'Перетащи здание и нажми «Построить»', wait:'built' },
-
-  // ── кофейня: то же самое, но варим из зёрен американо ──
-  { who:'grandson', text:'Тогда варим скорее! Дядь Вася уже ждёт свою чашку' },
-  { pointAt:'.plot[data-item="coffee"]', wait:'cafeOpened' },
-  { gen:'seed',  say:'Ставим зёрна вариться, заполняем все места!' },
-  { gen:'boost', say:'Ускоряем, и американо будет сразу!' },
-  { level:3 },
-
-  // ── куда идти дальше: доска заказов ──
-  { who:'grandson', text:'Вот ради чего всё это: жители оставляют заказы, мы их выполняем, и поселение растёт!',
-    spawn:'orders', focus:'orders' },
-  { who:'grandson', text:'Кофе готов. Идём закрывать заказ!',
-    pointAt:'.plot[data-id="orders"]', wait:'ordersOpened' },
-
-  // ── сам заказ: отправили, награда улетела в счётчики, новый уровень ──
-  { orders:'send', say:'Американо готов, отправляем заказ!' },
-  { level:4 },
-  { who:'grandson', text:'Заказ закрыт! Дядь Васе американо, себе латте. Вот теперь поселение живёт!' },
-];
+const SCRIPT = opts.script || [];
 
 let sc = -1, scWait = null, shownAt = 0, lastWho = null;
 
@@ -1397,6 +908,22 @@ function scNext(){
   tapcatch.classList.toggle('on', !!(st.text && !st.wait));
 
   if(st.spawn) spawnBuilding(st.spawn);
+  if(st.order) setOrder(st.order);
+  // явный выход на карту — нужен только там, где обучение кончилось
+  if(st.close){ closeGenerator(); ordersBox.classList.remove('on'); }
+  if(st.open === 'orders')    openOrders();
+  if(st.open === 'generator') openBuilding('generator');
+  if(st.open === 'cafe')      openBuilding('cafe');
+
+  // подсказка внутри открытого экрана: сама встаёт там, где не мешает
+  if(st.tip){
+    story.classList.remove('on');
+    screenTip(st.tip);
+    if(st.pointAt) setTimeout(() => pointTo(st.pointAt), 120);
+    scWait = st.wait || null;
+    return;
+  }
+
   if(st.orders){ story.classList.remove('on'); return ordersStep(st.say); }
   if(st.gen){ story.classList.remove('on'); return genStep(st.gen, st.say); }
   if(st.level){ story.classList.remove('on'); return showLevel(st.level); }
@@ -1447,6 +974,10 @@ function scNext(){
 
   scWait = st.wait || null;
   story.querySelector('.next').style.display = scWait ? 'none' : '';
+
+  // Служебный шаг — только настроил что-то и ничего не показал. Ждать его
+  // нечем и листать нечего, поэтому проматываем сами: иначе сценарий встаёт.
+  if(!st.text && !st.wait && !st.hint) setTimeout(scNext, 0);
 }
 
 /* Листается тапом по всей панели — и по реплике, и по кнопке «Дальше»:
@@ -1549,15 +1080,25 @@ function hidePoint(){ pointSel = null; cancelAnimationFrame(pointRaf); point.cla
 
 /* ─── сценарий внутри генератора ─── */
 
-/* подсказка на экране заказов: бабл внизу, стрелка на кнопку отправки */
-function ordersStep(say){
+/* Подсказка внутри любого экрана здания. На заказах садится под карточку,
+   в генераторе и кофейне — над игровой зоной. */
+function screenTip(text){
+  if(ordersBox.classList.contains('on')) return ordersBubble(text);
+  genBubble(text, false);
+}
+
+function ordersBubble(text){
   genSpeech.querySelector('img').src = '../assets/onboarding/avatar maloy-mini.png';
-  genSpeech.querySelector('.b').textContent = say || 'Отправляем заказ';
+  genSpeech.querySelector('.b').textContent = text;
   genSpeech.classList.add('on');
-  // под карточкой, ниже стрелки на кнопку
   const card = ordersBox.querySelector('.card').getBoundingClientRect();
   genSpeech.style.top = Math.min(card.bottom + 56, innerHeight - genSpeech.offsetHeight - 12) + 'px';
   genDemo.classList.remove('on');
+}
+
+/* подсказка на экране заказов: бабл внизу, стрелка на кнопку отправки */
+function ordersStep(say){
+  ordersBubble(say || 'Отправляем заказ');
   setTimeout(() => pointTo('#orders .send'), 120);
 }
 
@@ -1605,149 +1146,31 @@ function genBubble(text, withDemo){
     const top = anchor.getBoundingClientRect().top - genSpeech.offsetHeight - 34;
     genSpeech.style.top = Math.max(50, top) + 'px';
   }
-  if(withDemo) runDemo('seed'); else stopDemo();
+  if(withDemo) drawGenDemo(); else genDemo.classList.remove('on');
 }
 function hideGenHint(){
   clearTimeout(reseedTimer);
   genSpeech.classList.remove('on');
-  stopDemo();
-}
-
-/* ═══ Показ жеста ═══
-   Раньше по невидимой дуге ехала одна картинка, и люди не понимали,
-   что ресурс нужно тащить. Теперь показываем сам жест целиком: рука
-   подъезжает, нажимает, поднимает ресурс, ведёт по грядкам, и каждая
-   грядка на проход откликается. Крутится, пока человек не сделает сам. */
-
-let demoRaf = 0, demoTimers = [], demoToken = 0;
-
-function stopDemo(){
-  demoToken++;                 // прошлые запуски перестают что-либо делать
-  cancelAnimationFrame(demoRaf);
-  demoTimers.forEach(clearTimeout);
-  demoTimers = [];
   genDemo.classList.remove('on');
-  genDemo.innerHTML = '';
-  document.querySelectorAll('.cell.demoTarget, .cell.demoHot')
-    .forEach(c => c.classList.remove('demoTarget', 'demoHot'));
-}
-const later = (fn, ms) => demoTimers.push(setTimeout(fn, ms));
-
-/* плавно ведём руку из точки в точку */
-function handTo(hand, from, to, ms, curve, onDone, onFrame){
-  const t0 = performance.now();
-  (function step(now){
-    const k = Math.min(1, (now - t0) / ms);
-    const e = k < .5 ? 2*k*k : 1 - Math.pow(-2*k + 2, 2)/2;   // мягкий разгон и торможение
-    const x = from.x + (to.x - from.x) * e;
-    const y = from.y + (to.y - from.y) * e - (curve ? Math.sin(e * Math.PI) * curve : 0);
-    hand.style.left = x + 'px';
-    hand.style.top  = y + 'px';
-    if(onFrame) onFrame(x, y);
-    if(k < 1) demoRaf = requestAnimationFrame(step);
-    else onDone && onDone();
-  })(t0);
 }
 
-const centerOf = el => {
-  const r = el.getBoundingClientRect();
-  return { x: r.left + r.width/2, y: r.top + r.height/2 };
-};
-
-/* отклик грядки: поджимается и получает след ресурса */
-function tapCell(cell, icon){
-  cell.classList.add('demoHot');
-  later(() => cell.classList.remove('demoHot'), 340);
-  if(!icon) return;
-  const c = centerOf(cell);
-  const drop = document.createElement('img');
-  drop.className = 'drop';
-  drop.src = icon;
-  drop.style.left = c.x + 'px';
-  drop.style.top  = c.y + 'px';
-  genDemo.appendChild(drop);
-  later(() => drop.remove(), 520);
-}
-
-/* kind: 'seed' — от лотка по грядкам, 'collect' — по готовым грядкам */
-function runDemo(kind){
-  stopDemo();
-  const my = demoToken;
-  const alive = () => my === demoToken;
+/* зерно едет от лотка через весь ряд — путь невидимый, виден только жест */
+function drawGenDemo(){
   const cells = [...document.querySelectorAll(genHost + ' .cell')];
-  if(!cells.length) return;
-
-  const targets = kind === 'seed'
-    ? cells.filter(c => !c.classList.contains('growing') && !c.classList.contains('ready'))
-    : cells.filter(c => c.classList.contains('ready'));
-  if(!targets.length) return;
-
-  const src = kind === 'seed' ? document.querySelector(genHost + ' .seed:not(.locked)') : null;
-  if(kind === 'seed' && !src) return;
-
-  const icon = kind === 'seed'
-    ? (src.querySelector('img')?.src || '../assets/imgcoffe.png')
-    : (targets[0].querySelector('img')?.src || null);
-
-  targets.forEach(c => c.classList.add('demoTarget'));
-
-  genDemo.innerHTML = `<div class="hand"><span class="wave"></span><span class="dot"></span>` +
-                      (kind === 'seed' ? `<img class="carry" src="${icon}" alt="">` : '') + `</div>`;
+  const src = document.querySelector(genHost + ' .seed:not(.locked)');
+  if(!src || !cells.length) return;
+  const rs = src.getBoundingClientRect();
+  const f = cells[0].getBoundingClientRect();
+  const l = cells[cells.length-1].getBoundingClientRect();
+  const x0 = rs.left + rs.width/2, y0 = rs.top + rs.height/2;
+  const y = f.top + f.height/2;
+  const x1 = f.left + f.width/2, x2 = l.left + l.width/2;
+  const d = `M ${x0} ${y0} C ${x0-60} ${y0-120}, ${x1-60} ${y+120}, ${x1} ${y} L ${x2} ${y}`;
+  // тащим то, что реально лежит в лотке: в генераторе зерно, в кофейне чашку
+  const icon = src.querySelector('img')?.src || '../assets/imgcoffe.png';
+  genDemo.innerHTML = `<div class="runner" style="offset-path:path('${d}')">
+      <img src="${icon}" alt=""></div>`;
   genDemo.classList.add('on');
-  const hand = genDemo.querySelector('.hand');
-
-  const start = kind === 'seed' ? centerOf(src) : centerOf(targets[0]);
-  const above = { x: start.x, y: start.y - 90 };
-
-  hand.style.left = above.x + 'px';
-  hand.style.top  = above.y + 'px';
-
-  // 1. рука появляется и опускается на ресурс
-  later(() => alive() && hand.classList.add('show'), 40);
-  later(() => alive() && handTo(hand, above, start, 380, 0, () => {
-    if(!alive()) return;
-    // 2. нажатие
-    hand.classList.add('press');
-    later(() => {
-      if(!alive()) return;
-      hand.classList.remove('press');
-      if(kind === 'seed') hand.classList.add('hold');   // ресурс поднят
-      // 3. одно непрерывное ведение слева направо: именно в этом суть жеста,
-      //    поштучные тапы читались как «нажми на каждую»
-      const first = centerOf(targets[0]);
-      const last  = centerOf(targets[targets.length - 1]);
-      const marks = targets.map(c => ({ el:c, x:centerOf(c).x, hit:false }));
-
-      const sweep = () => {
-        if(!alive()) return;
-        handTo(hand, first, last, 240 + targets.length * 190, 0,
-          () => {
-            if(!alive()) return;
-            // 4. отпускаем и начинаем заново
-            hand.classList.remove('hold');
-            later(() => hand.classList.remove('show'), 140);
-            later(() => alive() && runDemo(kind), 900);
-          },
-          x => {
-            if(!alive()) return;
-            marks.forEach(m => {
-              if(!m.hit && x >= m.x - 4){
-                m.hit = true;
-                tapCell(m.el, kind === 'seed' ? icon : null);
-              }
-            });
-          });
-      };
-
-      // подводим руку к первой грядке дугой, дальше ведём без остановок
-      handTo(hand, start, first, 420, 70, () => {
-        if(!alive()) return;
-        tapCell(marks[0].el, kind === 'seed' ? icon : null);
-        marks[0].hit = true;
-        later(sweep, 80);
-      });
-    }, 260);
-  }), 420);
 }
 
 /* подсказка уходит, только когда реально взяли зерно из лотка */
@@ -1793,10 +1216,12 @@ boostTip.querySelector('.boost').addEventListener('click', () => {
   const cells = [...document.querySelectorAll(genHost + ' .cell')];
   activeGen.setCells(cells.map((_, i) => ({ index:i, state:'empty' })));
   genWait = null;
-  // зёрна долетают (последнее стартует с задержкой), затем закрываем экран
+  // Обычно экран уходит сам. Но сценарий может попросить остаться —
+  // тогда дальше человека уводят подсказкой и стрелкой на выход.
+  const stay = !!SCRIPT[sc]?.stay;
   setTimeout(() => {
-    closeGenerator();
-    setTimeout(scNext, 380);        // дожидаемся, пока экран уедет
+    if(!stay) closeGenerator();
+    setTimeout(scNext, stay ? 60 : 380);
   }, 620);
 });
 
@@ -1868,13 +1293,6 @@ levelBox.addEventListener('click', e => {
    Засеял не всё и отпустил — подсказку возвращаем: раньше она пропадала
    при первом же касании лотка и человек оставался без объяснений. */
 function onCellsChanged(st){
-  // собрал всё сам — дальше по сценарию, как после ускорения
-  if(genWait === 'collected' && st.ready === 0){
-    genWait = null;
-    hideGenHint();
-    closeGenerator();
-    return setTimeout(scNext, 380);
-  }
   if(genWait !== 'allSeeded') return;
   if(st.empty === 0){ genWait = null; return scNext(); }
   clearTimeout(reseedTimer);
@@ -1885,21 +1303,6 @@ function onCellsChanged(st){
 }
 gen0.on('change', onCellsChanged);
 cafeGen.on('change', onCellsChanged);
-
-/* Не ускорил, а дождался — предложение ускорить теряет смысл.
-   Убираем тултип и показываем, как собирать: иначе человек сидит
-   перед готовыми грядками с мёртвой кнопкой «Бесплатно». */
-setInterval(() => {
-  if(genWait !== 'boosted') return;
-  const st = activeGen.stats();
-  if(st.growing > 0 || st.ready === 0) return;
-
-  boostTip.classList.remove('on');
-  clearInterval(boostTimer);
-  genWait = 'collected';
-  genBubble('Выросло! Проведи пальцем по грядкам, чтобы забрать', false);
-  runDemo('collect');
-}, 400);
 
 /* Финальная спасибка: прогон закончен, дальше свободная игра. */
 const finishBox = document.getElementById('finish');
@@ -1927,6 +1330,8 @@ function showFinish(){
 
 /* прототип всегда стартует с начала истории — и мир вместе с ней */
 resetWorld();
-</script>
-</body>
-</html>
+
+/* наружу отдаём только ручки для отладки и прогонов */
+return { gen:gen0, cafe:cafeGen, level:levelBox, finish:finishBox, story, dock, point,
+         step:() => sc, script:SCRIPT };
+};

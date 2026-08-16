@@ -8,12 +8,18 @@
    createGenerator(host, {
      assets,   путь к папке с картинками
      storeKey, ключ хранилища — свой у каждого прототипа
+     v,        1 (по умолчанию) | 2 — поколение механики, см. флаг V2
      version,  'tool' | 'direct' | 'select'
      mode,     'single' | 'overflow'
+     cells,    сколько ячеек в блоке (по умолчанию 25 — сетка 5×5)
+     types,    свой набор ресурсов вместо стандартного
+     title,    заголовок экрана (по умолчанию «Генератор»)
+     hero,     разметка сцены над грядками (что происходит внутри здания)
      chrome    false — спрятать служебную кнопку версий
+     back      false — спрятать «‹»: у хоста своя
    }) → API
 
-   API: .stats() .on('change',cb) .setVersion() .setMode() .reset()
+   API: .stats() .cells() .on('change',cb) .setVersion() .setMode() .reset()
         .setCells() .highlight(idx) .el
    ═══════════════════════════════════════════════════════════════ */
 
@@ -43,6 +49,10 @@ const GENERATOR_MARKUP = String.raw`<div id="phone">
     <div id="title">Генератор</div>
     <div id="desc">Доступно <span id="free">0</span> ячеек</div>
   </div>
+
+  <!-- сцена над грядками: у преобразователя тут показывают, что происходит
+       внутри здания. Пустая — схлопывается и места не занимает -->
+  <div id="hero"></div>
 
   <div id="stage">
     <div id="scroller"></div>
@@ -141,13 +151,29 @@ window.createGenerator = function createGenerator(host, opts = {}){
 
 /* ═══════════ КОНФИГ ═══════════ */
 
-const RESOURCE_TYPES = [
+/* Набор ресурсов можно подменить: кофейня переваривает зёрна в американо,
+   и ей нужен свой лоток, а не грядки из генератора. */
+const RESOURCE_TYPES = opts.types || [
   { id:'strawberry', name:'Клубника', growMs:10*1000, image: ASSETS + '/img.png' },
   { id:'banana',     name:'Банан',    growMs:20*1000, image: ASSETS + '/imgb.png' },
   { id:'coffee',     name:'Кофе',     growMs:40*1000, image: ASSETS + '/imgcoffe.png' },
 ];
 
+/* Поколение генератора. Модуль общий на все прототипы, но развивать мы
+   хотим только страницу /generator/, а онбординги должны остаться ровно
+   такими, какими их отдали на тест. Поэтому любая новая правка механики
+   идёт под этим флагом:
+
+     if(V2){ ...новое... } else { ...как было... }
+
+   По умолчанию v = 1: кто не просил, тот ничего не заметил. Явное `v:2`
+   ставит только generator/index.html. На #phone вешается класс v2, чтобы
+   так же ветвиться в CSS, не трогая общие правила. */
+const V2 = opts.v === 2;
+
 const CELLS_PER_BLOCK = opts.cells || 25;
+const GRID_COLS = Math.min(5, CELLS_PER_BLOCK);
+const GRID_ROWS = Math.ceil(CELLS_PER_BLOCK / GRID_COLS);
 const MODES = { single:1, overflow:4 };
 const SKELETON_MS = 600;
 const DOUBLE_TAP_MS = 300;
@@ -187,6 +213,7 @@ const cellEls = [];
 /* Макет свёрстан в координатах 360×780 и целиком масштабируется под экран:
    на телефоне растягивается во весь экран, на десктопе ужимается. */
 const DESIGN_W = 360;
+let uiScale = 1;         // текущий масштаб «телефона», см. fit()
 /* Полная обвязка (статус-бар, app bar, заголовок, контролы, лоток, home bar)
    съедает 430 единиц. Сетке нужно 288 плюс поля 32 — значит полный вариант
    имеет смысл только от 750. Ниже переключаемся на компактный, иначе на
@@ -213,25 +240,31 @@ function fit(){
   phone.style.height = layoutH + 'px';
   phone.style.left = Math.round((w - DESIGN_W * s) / 2) + 'px';
   phone.style.transform = `scale(${s})`;
+  uiScale = s;              // ручка версии B живёт вне #phone и масштабируется сама
 
   sizeGrid();
 }
 
 /* Ячейка подгоняется под то, что осталось между шапкой и лотком.
-   Сетка всегда квадратная 5×5 и целиком помещается — без обрезки и без
-   упирания в подзаголовок. Поля --stage-pad уже вычтены самим stage. */
+   Сетка целиком помещается — без обрезки и без упирания в подзаголовок.
+   Рядов не всегда пять: онбординг берёт всего 5 ячеек, и высоту блока
+   считаем по факту, иначе одинокий ряд висел бы посреди пустоты.
+   Поля --stage-pad уже вычтены самим stage. */
 function sizeGrid(){
   const avail = stage.clientHeight;          // padding уже учтён в clientHeight
   const pad = parseFloat(getComputedStyle(stage).paddingTop) * 2;
   const usable = avail - pad;
 
   const gap = 2;
-  let cell = Math.floor((usable - gap * 4) / 5);
+  let cell = Math.floor((usable - gap * (GRID_ROWS - 1)) / GRID_ROWS);
   cell = Math.max(CELL_MIN, Math.min(CELL_MAX, cell));
 
-  const blockW = cell * 5 + gap * 4;
+  const blockW = cell * GRID_COLS + gap * (GRID_COLS - 1);
+  const blockH = cell * GRID_ROWS + gap * (GRID_ROWS - 1);
+  root.style.setProperty('--grid-cols', GRID_COLS);
   root.style.setProperty('--cell-size', cell + 'px');
   root.style.setProperty('--block-w', blockW + 'px');
+  root.style.setProperty('--block-h', blockH + 'px');
   root.style.setProperty('--grid-left', Math.round((DESIGN_W - blockW) / 2) + 'px');
 }
 addEventListener('resize', fit);
@@ -374,7 +407,12 @@ tray.addEventListener('click', e => {
 });
 
 collectTool.addEventListener('pointerdown', e => {
-  if(cfg.collect !== 'tool') return;         // ручка заметает только в версии A
+  // Версия A — ручкой заметают всегда. Во второй версии ручка есть ещё и в B
+  // с удержанием: раз она лежит на экране, её пробуют взять, и упираться
+  // тут нечего. Получаются два пути к одному сбору: взял ручку и повёл или
+  // задержал палец на ячейке.
+  const holdHand = V2 && cfg.collect === 'direct' && cfg.direct === 'hold';
+  if(cfg.collect !== 'tool' && !holdHand) return;
   e.preventDefault();
   startDrag('collect', collectTool, null, e);
 });
@@ -681,16 +719,31 @@ const HINTS = {
   }
 };
 
+/* во второй версии два режима ведут себя иначе — и подписи на служебном
+   экране должны это отражать, иначе тестировщик ищет галочки */
+const HINTS2 = {
+  collect: {
+    select: 'Долгое удержание включает режим сбора: готовые ячейки начинают дёргаться, как иконки на домашнем экране. Дальше тапаешь по ним или ведёшь пальцем.'
+  },
+  direct: {
+    hold: 'Ручка стоит на месте, как в версии A, и её можно просто взять. Либо держишь палец на ячейке — заряжается кольцо, ручка сама улетает на палец, дальше ведёшь и собираешь пачкой.'
+  }
+};
+
 function applyCfg(){
   const direct = cfg.collect === 'direct';
   const select = cfg.collect === 'select';
   phone.dataset.ver = cfg.collect;
   $('#directRow').hidden = !direct;
-  collectTool.hidden = direct || select;    // ручка живёт только в версии A
+  // ручка живёт в версии A, а во второй версии ещё и в B с удержанием:
+  // там она стоит на своём месте всегда и улетает на палец, когда режим взвёлся
+  const holdHand = V2 && direct && cfg.direct === 'hold';
+  collectTool.hidden = (direct || select) && !holdHand;
   $('#devver').textContent = select ? 'C' : direct ? 'B' : 'A';
   if(!select) clearPicked();
-  $('#collectHint').textContent = HINTS.collect[cfg.collect];
-  $('#directHint').textContent = HINTS.direct[cfg.direct];
+  if(V2){ stopJiggle(); disarmHarvest(); }
+  $('#collectHint').textContent = (V2 && HINTS2.collect[cfg.collect]) || HINTS.collect[cfg.collect];
+  $('#directHint').textContent = (V2 && HINTS2.direct[cfg.direct]) || HINTS.direct[cfg.direct];
 
   settings.querySelectorAll('[data-set]').forEach(b => {
     const [k, v] = b.dataset.set.split(':');
@@ -746,6 +799,21 @@ function clearPicked(){
 }
 
 function renderActionbar(){
+  // во второй версии панель обслуживает режим дёрганья, а не выделение
+  if(V2 && cfg.collect === 'select'){
+    if(!jiggling){ actionbar.hidden = true; return; }
+    actionbar.hidden = false;
+    const ready = readyCount();
+    $('#selN').textContent = 'Режим сбора';
+    $('#selHint').textContent = ready
+      ? `готовых ${ready} — тапай или веди пальцем`
+      : 'готовых нет';
+    const btn = $('#doCollect');
+    btn.disabled = !ready;
+    btn.textContent = ready ? `Собрать всё · ${ready}` : 'Собрать всё';
+    $('#doClear').textContent = 'Готово';
+    return;
+  }
   if(cfg.collect !== 'select' || picked.size === 0){ actionbar.hidden = true; return; }
   actionbar.hidden = false;
   const arr = [...picked];
@@ -762,6 +830,17 @@ function renderActionbar(){
 
 /* сбор всего выделенного */
 $('#doCollect').addEventListener('click', () => {
+  // в режиме дёрганья выделения нет: собираем всё готовое на всех блоках
+  if(V2 && cfg.collect === 'select'){
+    let k = 0;
+    state.cells.forEach((c, i) => {
+      if(c.state !== 'ready') return;
+      state.cells[i] = { state:'empty' }; paintCell(i); k++;
+    });
+    if(k){ countFree(); save(); }
+    stopJiggle();
+    return;
+  }
   let n = 0;
   picked.forEach(i => {
     if(state.cells[i].state !== 'ready') return;
@@ -773,7 +852,10 @@ $('#doCollect').addEventListener('click', () => {
   clearPicked();
 });
 
-$('#doClear').addEventListener('click', clearPicked);
+$('#doClear').addEventListener('click', () => {
+  if(V2 && cfg.collect === 'select') return stopJiggle();   // это «Готово»
+  clearPicked();
+});
 
 /* посев всего выделенного: тап по ресурсу в лотке */
 function seedPicked(typeId){
@@ -795,6 +877,12 @@ function seedPicked(typeId){
 const MOVE_TOL = 10;    // порог, после которого движение считается прокруткой
 const HOLD_MS  = 250;
 
+/* Во второй версии удержание чуть длиннее: за 250 мс индикатор зарядки
+   не успевает прочитаться, палец уже уехал. 320 — всё ещё быстро, но
+   кольцо видно и понятно, что идёт взвод режима. */
+const HOLD_V2  = 320;
+const JIGGLE_MS = 450;  // версия C: вход в режим сбора, как на домашнем экране
+
 let dc = null;          // текущее касание сетки
 let swallowClick = false;
 
@@ -802,6 +890,25 @@ scroller.addEventListener('pointerdown', e => {
   if(drag) return;
   const cell = e.target.closest('.cell');
   if(!cell) return;
+
+  // версия C во второй версии: галок и выделения нет. Пока режим сбора
+  // не взведён — сетка живёт обычной жизнью, свайп листает блоки, а долгое
+  // удержание включает «дёрганье», как на домашнем экране айфона.
+  if(V2 && cfg.collect === 'select'){
+    const i = +cell.dataset.idx;
+    dc = { idx:i, x:e.clientX, y:e.clientY, moved:false, sweeping:false, timer:null };
+    if(jiggling){
+      // режим уже включён: касание сразу собирает, дальше можно вести пальцем
+      e.preventDefault();          // и никакой инерции прокрутки от этого касания
+      dc.sweeping = true;
+      lockScroll(true);
+      sweepAt(e.clientX, e.clientY);
+    } else {
+      hold(cell, JIGGLE_MS);
+      dc.timer = setTimeout(() => { if(dc && !dc.moved) startJiggle(); }, JIGGLE_MS);
+    }
+    return;
+  }
 
   // версия C: начинаем красить выделение — добавляем или снимаем,
   // как в фотоплёнке, направление задаёт первая тронутая ячейка
@@ -826,7 +933,9 @@ scroller.addEventListener('pointerdown', e => {
     // решает стартовая ячейка: готовая — собираем, любая другая — листаем
     if(state.cells[idx].state === 'ready') startSweep();
   } else {
-    dc.timer = setTimeout(() => { if(dc && !dc.moved) startSweep(); }, HOLD_MS);
+    // во второй версии удержание видно: на ячейке заряжается кольцо
+    if(V2) hold(cell, HOLD_V2);
+    dc.timer = setTimeout(() => { if(dc && !dc.moved) startSweep(); }, V2 ? HOLD_V2 : HOLD_MS);
   }
 });
 
@@ -839,9 +948,11 @@ document.addEventListener('pointermove', e => {
   if(!dc.moved && Math.hypot(dx, dy) > MOVE_TOL){
     dc.moved = true;
     clearTimeout(dc.timer);   // сдвинулся раньше задержки — это прокрутка
+    clearHolding();           // зарядка кольца оборвалась вместе с удержанием
   }
   if(dc.sweeping){
     e.preventDefault();
+    handyTo(e.clientX, e.clientY);
     sweepAt(e.clientX, e.clientY);
     // у края блоки листаются, не отрывая палец — как при посеве
     const pr = phone.getBoundingClientRect();
@@ -855,11 +966,21 @@ function lockScroll(on){
   const x = scroller.scrollLeft;
   scroller.style.overflowX = on ? 'hidden' : '';
   scroller.scrollLeft = x;
+  // Одного overflow мало: сафари решает, что жест — это прокрутка, раньше
+  // чем до нас доходит pointermove, и дальше листает блок, что бы мы ни
+  // делали. Панорамирование надо запрещать самому браузеру, через
+  // touch-action, — тогда сбор ведением не превращается в скролл.
+  if(V2) scroller.classList.toggle('nopan', on);
 }
 
 function startSweep(){
   dc.sweeping = true;
   lockScroll(true);
+  clearHolding();
+  // Взвод режима в версии B нечем было заметить: сбор просто начинал
+  // работать. Теперь на палец прилетает ручка и подсвечиваются готовые —
+  // жест читается как «держи и веди, собираю пачкой».
+  if(V2 && cfg.collect === 'direct' && cfg.direct === 'hold') armHarvest(dc.x, dc.y);
   sweepAt(dc.x, dc.y);
 }
 
@@ -869,6 +990,10 @@ function sweepAt(x, y){
   if(!cell) return;
   const i = +cell.dataset.idx;
 
+  if(V2 && cfg.collect === 'select'){     // версия C: в режиме дёрганья сразу собираем
+    if(jiggling && state.cells[i].state === 'ready'){ popCollect(i); swallowClick = true; }
+    return;
+  }
   if(cfg.collect === 'select'){          // версия C: красим выделение
     if(paintCell2(i, paint.add)) renderActionbar();
     swallowClick = true;
@@ -880,9 +1005,19 @@ function sweepAt(x, y){
 function endDirect(){
   if(!dc) return;
   clearTimeout(dc.timer);
+  clearHolding();
   paint = null;
-  // тап без движения — собираем одну ячейку
-  if(!dc.moved && !dc.sweeping && state.cells[dc.idx].state === 'ready'){
+  disarmHarvest();
+  // тап без движения — собираем одну ячейку.
+  // В версии C это делает только включённый режим сбора: до него короткий
+  // тап ничего не значит, иначе дёрганье теряет смысл.
+  const tap = !dc.moved && !dc.sweeping;
+  if(V2 && cfg.collect === 'select'){
+    if(tap && jiggling && state.cells[dc.idx].state === 'ready'){
+      popCollect(dc.idx);
+      swallowClick = true;
+    }
+  } else if(tap && state.cells[dc.idx].state === 'ready'){
     collect(dc.idx);
     swallowClick = true;
   }
@@ -894,6 +1029,177 @@ document.addEventListener('pointerup', endDirect);
 document.addEventListener('pointercancel', endDirect);
 addEventListener('blur', endDirect);
 
+/* ═══════════ V2: ФИДБЕК УДЕРЖАНИЯ (B) И РЕЖИМ ДЁРГАНЬЯ (C) ═══════════
+
+   Обе версии страдали одним и тем же: режим включался молча. В B ты
+   держал палец и не знал, взвелось ли; в C галочки говорили «выбрано»,
+   но не говорили «можно собирать», и требовали второй шаг кнопкой.
+
+   B · удержание. Ручка из версии A стоит на своём месте всегда — экран
+   сразу говорит, чем тут собирают. Пока держишь палец, на ячейке заряжается
+   кольцо; взвелось — ручка улетает с кнопки на палец и остаётся на нём,
+   пока ведёшь. Взять её и повести руками тоже можно: два пути к одному
+   сбору, и ни один не упирается в «так нельзя».
+
+   C · дёрганье. Галок нет. Долгое удержание включает режим сбора, и все
+   готовые ячейки начинают дёргаться, как иконки на домашнем экране.
+   Дальше тапаешь по ним или ведёшь пальцем — они выщёлкиваются по одной.
+   Режим гаснет сам, когда собирать больше нечего.                      */
+
+/* зарядка под пальцем: пятно растёт ровно столько, сколько длится
+   удержание в этом режиме — в B это 320 мс, в C 450 */
+function hold(cell, ms){
+  cell.style.setProperty('--hold-ms', ms + 'ms');
+  cell.classList.add('holding');
+}
+
+/* кольцо зарядки под пальцем — снимаем при любом исходе удержания */
+function clearHolding(){
+  if(!V2) return;
+  scroller.querySelectorAll('.cell.holding').forEach(el => el.classList.remove('holding'));
+}
+
+/* ─── ручка, прилетающая на палец ─── */
+
+let handy = null;
+
+function handyEl(){
+  if(handy) return handy;
+  handy = document.createElement('div');
+  handy.id = 'handy';
+  handy.textContent = '👋';
+  // рядом с #ghost, а не внутрь #phone: телефон масштабируется трансформом
+  // и обрезает overflow — фиксированная ручка внутри него уезжала за край
+  host.appendChild(handy);
+  return handy;
+}
+
+/* откуда вылетает и куда возвращается: место ручки в версии A.
+   Кнопка в этом режиме на экране, так что берём её собственные координаты */
+function parkPoint(){
+  const el = collectTool.hidden ? $('.controls') : collectTool;
+  const r = el.getBoundingClientRect();
+  return collectTool.hidden
+    ? { x: r.right - r.width * 0.12, y: r.top + r.height / 2 }
+    : { x: r.left + r.width / 2,     y: r.top + r.height / 2 };
+}
+
+/* Плавность нужна ровно на двух перелётах — с кнопки на палец и обратно.
+   Пока ручка на пальце, её быть не должно: с transition на transform
+   каждое движение пальца ручка «доезжает» за 220 мс и волочится следом.
+   Поэтому перелёты — с анимацией, слежение за пальцем — без. */
+const HANDY_FLY = 220;
+const HANDY_EASE = `transform ${HANDY_FLY}ms cubic-bezier(.22,1.4,.5,1), opacity .18s ease`;
+let handyTimer = null;
+
+/* translate3d, а не translate: сафари так держит ручку на своём слое
+   и не перерисовывает её вместе с сеткой на каждом кадре */
+const handyAt = (x, y, k) =>
+  `translate3d(${x-28}px, ${y-28}px, 0) scale(${uiScale*k})`;
+
+/* pointermove на айфоне сыпется чаще кадров, а сам обработчик и так
+   дёргает elementFromPoint по сетке. Позицию ручки копим и красим один
+   раз за кадр — иначе на сафари это выглядит как заедание. */
+let handyRaf = 0, handyXY = null;
+
+function handyPaint(){
+  handyRaf = 0;
+  if(!handyXY || !handy || !handy.classList.contains('on')) return;
+  handy.style.transform = handyAt(handyXY.x, handyXY.y, 1);
+}
+
+function armHarvest(x, y){
+  const h = handyEl(), p = parkPoint();
+  // пока ручка на пальце, кнопку прячем: иначе рук на экране две
+  collectTool.classList.add('handoff');
+  clearTimeout(handyTimer);
+  h.style.transition = 'none';                 // ставим в парковку без анимации
+  h.style.transform = handyAt(p.x, p.y, .4);
+  h.classList.add('on');
+  void h.offsetWidth;                          // и только потом отпускаем к пальцу
+  h.style.transition = HANDY_EASE;
+  handyXY = { x, y };
+  h.style.transform = handyAt(x, y, 1);
+  // долетела — снимаем плавность, дальше ручка сидит ровно под пальцем
+  handyTimer = setTimeout(() => { h.style.transition = ''; }, HANDY_FLY);
+  phone.classList.add('harvest');
+}
+
+function handyTo(x, y){
+  if(!handy || !handy.classList.contains('on')) return;
+  handyXY = { x, y };
+  if(!handyRaf) handyRaf = requestAnimationFrame(handyPaint);
+}
+
+function disarmHarvest(){
+  if(!phone.classList.contains('harvest')) return;
+  phone.classList.remove('harvest');
+  if(!handy) return;
+  clearTimeout(handyTimer);
+  cancelAnimationFrame(handyRaf); handyRaf = 0; handyXY = null;
+  const p = parkPoint();
+  handy.style.transition = HANDY_EASE;          // обратный перелёт снова плавный
+  handy.style.transform = handyAt(p.x, p.y, .4);
+  handy.classList.remove('on');
+  // кнопку возвращаем, когда ручка долетела до места — иначе они мигнут вдвоём
+  setTimeout(() => collectTool.classList.remove('handoff'), HANDY_FLY);
+}
+
+/* ─── режим дёрганья ─── */
+
+let jiggling = false;
+
+const readyCount = () => state.cells.filter(c => c.state === 'ready').length;
+
+function startJiggle(){
+  clearHolding();
+  // собирать нечего — режим не включаем, иначе дёрганья нет и экран врёт
+  if(!readyCount()) return;
+  jiggling = true;
+  phone.classList.add('jiggle');
+  desyncJiggle();
+  renderActionbar();
+  // палец не отрывали: продолжаем тем же касанием, как долгий тап с ведением
+  if(dc){
+    dc.sweeping = true;
+    lockScroll(true);
+    sweepAt(dc.x, dc.y);
+  }
+}
+
+function stopJiggle(){
+  if(!jiggling) return;
+  jiggling = false;
+  phone.classList.remove('jiggle');
+  renderActionbar();
+}
+
+/* иконки на домашнем экране дёргаются вразнобой — иначе сетка пульсирует
+   одним куском и читается как мигание, а не как «живые» ячейки */
+function desyncJiggle(){
+  cellEls.forEach(el => {
+    if(el) el.style.setProperty('--jd', (-Math.random() * 400 | 0) + 'ms');
+  });
+}
+
+/* сбор одной ячейки в режиме дёрганья: с выщелкиванием */
+function popCollect(idx){
+  const el = cellEls[idx];
+  collect(idx);
+  if(el){
+    el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+    setTimeout(() => el.classList.remove('pop'), 280);
+  }
+  readyCount() ? renderActionbar() : stopJiggle();
+}
+
+/* тап мимо сетки закрывает режим — как тап по обоям на домашнем экране */
+document.addEventListener('pointerdown', e => {
+  if(!V2 || !jiggling) return;
+  if(e.target.closest('.cell') || e.target.closest('#actionbar') || e.target.closest('#tray')) return;
+  stopJiggle();
+});
+
 /* ═══════════ СКЕЛЕТОН + СТАРТ ═══════════ */
 
 function buildSkeleton(){
@@ -904,10 +1210,14 @@ function buildSkeleton(){
   };
   add('position:absolute;left:16px;top:96px;width:200px;height:34px;border-radius:8px');
   add('position:absolute;left:16px;top:148px;width:140px;height:18px;border-radius:5px');
-  const g = add('position:absolute;left:36px;top:216px;width:288px;height:288px;background:none');
-  g.style.cssText += ';display:grid;grid-template-columns:repeat(5,56px);grid-auto-rows:56px;gap:2px';
+  // скелетон повторяет реальную сетку: у онбординга ячеек меньше,
+  // и квадрат 5×5 схлопывался бы в один ряд прямо на глазах
+  const g = add('position:absolute;left:var(--grid-left);top:50%;transform:translateY(-50%);' +
+                'width:var(--block-w);height:var(--block-h);background:none');
+  g.style.cssText += ';display:grid;grid-template-columns:repeat(var(--grid-cols,5),var(--cell-size));' +
+                     'grid-auto-rows:var(--cell-size);gap:2px';
   g.className = '';
-  for(let i=0;i<25;i++){
+  for(let i=0;i<CELLS_PER_BLOCK;i++){
     const c = document.createElement('div');
     c.className='sk'; c.style.animationDelay=(i*16)+'ms';
     g.appendChild(c);
@@ -937,6 +1247,7 @@ function render(){
   const api = {
     el: host,
     stats,
+    cells(){ return state.cells.map(c => ({ ...c })); },
     on(name, cb){ (listeners[name] ||= []).push(cb); return api; },
     setVersion(v){ cfg.collect = v; saveCfg(); applyCfg(); return api; },
     setMode(m){ if(m !== state.mode){ state = fresh(m); save(); render(); } return api; },
@@ -954,9 +1265,15 @@ function render(){
   };
 
   // настройки из opts применяем до первой отрисовки, чтобы не мигать
+  if(V2) $('#phone').classList.add('v2');
   if(opts.version){ cfg.collect = opts.version; saveCfg(); }
   if(opts.mode && opts.mode !== state.mode) state = fresh(opts.mode);
   if(opts.chrome === false) $('#devbtn').style.display = 'none';
+  // встраиваемому генератору своя «‹» не нужна: у хоста она уже есть,
+  // и две стрелки наезжали друг на друга в углу
+  if(opts.back === false) $('#back').style.display = 'none';
+  if(opts.title) $('#title').textContent = opts.title;
+  if(opts.hero){ $('#hero').innerHTML = opts.hero; $('#phone').classList.add('withhero'); }
   if(opts.dim) $('#phone').classList.add('dim');
 
   render();

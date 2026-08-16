@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Онбординг, вариант 2</title>
+<link rel="stylesheet" href="../shared/generator/generator.css?v=202608161655">
+<link rel="stylesheet" href="../shared/farm/farm.css?v=20260811115621">
+</head>
+<body>
+<script src="../shared/generator/generator.js?v=202608161655"></script>
+<script src="../shared/farm/farm.js?v=20260811115621"></script>
+<script>
+'use strict';
+
+/* ═══ ВАРИАНТ 2: всё крутится вокруг доски заказов ═══
+
+   В первом варианте путь линейный: зерно → кофейня → заказ, и доска
+   появляется в конце как новая сущность. Здесь наоборот — доска это
+   главная цель с третьей реплики, и весь онбординг идёт циклом:
+   взял заказ → не хватает ресурса → сходил и сделал → вернулся, отдал.
+
+   Человек не выходит на карту между шагами просто так: после уровня он
+   остаётся на доске, там же узнаёт, чего не хватает, и его ведут за
+   ресурсом. Генератор в конце не закрывается сам — стрелка возвращает
+   к доске, чтобы цикл читался как цикл.
+
+   Длина реплик. Типографика из макета: SF Pro Text Semibold 15, трекинг
+   −0.24, интерлиньяж авто. В строку влезает около 36 символов, потолок
+   четыре строки, значит реплика до 140 символов. Подсказка внутри экрана
+   уже, там до 45.
+
+   Каждая реплика закрывает задачу уровня, а не просто звучит:
+     уровень 1 — куда попал, главная задача, первое действие;
+     уровень 2 — ресурсы не берутся из ниоткуда, и делают их не грядкой;
+     уровень 3 — здания строим сами, генератор и кофейня — одна цепочка. */
+const SCRIPT = [
+  // ── уровень 1: завязка, цель, первое действие ──
+  // Все три реплики от внука, он говорит игроку. Первая даёт жанр и
+  // сеттинг: технарь купил поселение и строит тут производства, а не
+  // пшеницу с морковкой. Вторая — что он собирается делать руками
+  // игрока. Третья — куда нажать. Бабуся вступает позже, там, где нужен
+  // деревенский опыт: это и есть связка технологий с деревней.
+  { who:'grandson', text:'Наконец-то добрался до поселения! Планы большие: свои производства и кофейня. Растить будем не морковку, а золото и зёрна!' },
+  { who:'grandson', text:'Правда, всё оказалось сложнее, чем я думал. В технологиях я разбираюсь, а в деревенской жизни нет. Без бабуси не справлюсь!' },
+  { who:'grandson', text:'Зато план понятный: строить здания, запускать производства и делать товары для жителей. Так поселение и растёт!' },
+  { who:'grandson', text:'А начнём мы с заказов жителей. Вон и доска заказов, открываем!',
+    spawn:'orders', focus:'orders', pointAt:'.plot[data-id="orders"]', wait:'ordersOpened' },
+
+  { orders:'send', order:{ client:0, item:'bean', have:5, need:1 }, stay:true,
+    say:'Отправляем заказ, он уже готов!' },
+  { level:2 },
+
+  // ── уровень 2: ресурсы надо произвести, и делают их не грядкой ──
+  { open:'orders', order:{ client:1, item:'bean', have:0, need:2 },
+    tip:'Зерна нет. Нужно его вырастить!',
+    pointAt:'#orders .back', wait:'ordersClosed' },
+
+  { who:'grandson', text:'Зерно у нас растит генератор. Это вам не грядка, а настоящая установка!',
+    focus:'generator', pointAt:'.plot[data-id="gen"]', wait:'generatorOpened' },
+  { gen:'seed',  say:'Загружаем зерно во все ячейки!' },
+  { gen:'boost', say:'Ждать не обязательно, ускоряем!', stay:true },
+  { tip:'Отлично, ресурс готов! Несём в заказ', pointAt:'#screen .back', wait:'screenClosed' },
+
+  { focus:'orders', pointAt:'.plot[data-id="orders"]', wait:'ordersOpened' },
+  { orders:'send', order:{ client:1, item:'bean', have:5, need:2 }, stay:true,
+    say:'Зерна хватает, отправляем!' },
+  { level:3 },
+
+  // ── уровень 3: здания строим сами, и цепочка идёт дальше ──
+  { open:'orders', order:{ client:0, item:'cup', have:0, need:1 },
+    tip:'Просят американо. Его варят из зерна!',
+    pointAt:'#orders .back', wait:'ordersClosed' },
+
+  { who:'granny', text:'Само зерно в американо не превратится! Нужна кофейня, а здания мы тут строим сами' },
+  { pointAt:'#openSheet', wait:'sheetOpened' },
+  { pointAt:'[data-cat="Преобразователи"]', wait:'catOpened' },
+  { pointAt:'[data-item="coffee"]', wait:'placing' },
+  { hint:'Перетащи здание и нажми «Построить»', wait:'built' },
+
+  { pointAt:'.plot[data-item="coffee"]', wait:'cafeOpened' },
+  { gen:'seed',  say:'Отправляем зерно в кофейню!' },
+  { gen:'boost', say:'Ускоряем, и американо готов!', stay:true },
+  { tip:'Готовый продукт! Несём заказчику', pointAt:'#screen .back', wait:'screenClosed' },
+
+  { focus:'orders', pointAt:'.plot[data-id="orders"]', wait:'ordersOpened' },
+  { orders:'send', order:{ client:0, item:'cup', have:5, need:1 }, stay:true,
+    say:'Отправляем, заказ закрыт!' },
+  { level:4 },
+
+  // единственный выход на карту за весь вариант — и он же конец обучения:
+  // дальше свободная игра, а она живёт на карте
+  { close:true, who:'granny', text:'Вот теперь вижу, с деревней ты поладил! Дальше и сам справишься' },
+];
+
+window.farm = createFarm({ script: SCRIPT, variant:'b' });
+</script>
+</body>
+</html>

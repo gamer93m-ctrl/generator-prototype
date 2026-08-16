@@ -8,6 +8,7 @@
     --cell-size:56px;
     --cell-gap:2px;
     --block-w:288px;                        /* 5×56 + 4×2 */
+    --block-h:288px;                        /* столько же, но рядов бывает меньше пяти */
     --block-gap:20px;
     --grid-left:36px;
     --stage-pad:16px;
@@ -77,6 +78,17 @@
   }
   #desc{margin-top:18px;font-size:17px;letter-spacing:-.41px;color:#8e8e93}
 
+  /* ─── сцена над грядками ─── */
+  /* Карточка, в которой видно, что здание делает: у преобразователя там
+     стоит человек за машиной. Пустая — не занимает ни пикселя. */
+  /* по ширине ровно как сетка — карточка и грядки читаются одним блоком */
+  #hero{flex:0 0 auto;width:var(--block-w);margin:0 auto;background:#1c1c1e;
+    border-radius:20px;overflow:hidden}
+  #hero:empty{display:none}
+  /* со сценой сетка прижимается к ней сверху (отступ — padding у stage),
+     а свободная высота уходит вниз, к лотку */
+  #phone.withhero #stage{align-items:flex-start}
+
   /* ─── сетка блоков ─── */
   /* сетка забирает свободную высоту, минимальные поля сверху и снизу гарантированы */
   #stage{
@@ -84,7 +96,7 @@
     min-height:0;padding:var(--stage-pad) 0;
   }
   #scroller{
-    width:100%;height:var(--block-w);
+    width:100%;height:var(--block-h);
     /* ряды прижимались к верху, когда ячеек меньше пяти рядов —
        центрируем, чтобы сетка стояла посередине экрана */
     display:flex;align-items:center;gap:var(--block-gap);padding:0 var(--grid-left);
@@ -97,7 +109,7 @@
   .block{
     /* якорная позиция: блок всегда встаёт по центру экрана */
     flex:0 0 var(--block-w);scroll-snap-align:center;
-    display:grid;grid-template-columns:repeat(5,var(--cell-size));
+    display:grid;grid-template-columns:repeat(var(--grid-cols,5),var(--cell-size));
     grid-auto-rows:var(--cell-size);gap:var(--cell-gap);
   }
   .cell{
@@ -289,3 +301,79 @@
 .seed .lock{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   width:38px;height:38px;border-radius:50%;background:#f6f7f8;color:#000;
   display:grid;place-items:center;font-size:17px}
+
+/* ═══════════ ВТОРАЯ ВЕРСИЯ ГЕНЕРАТОРА ═══════════
+   Всё под #phone.v2 — первая версия и оба онбординга сюда не попадают. */
+
+/* ─── B · удержание: кольцо зарядки под пальцем ───
+   Пока держишь, из центра ячейки разрастается пятно. Дошло до края —
+   режим взвёлся. Даёт понять, что ждать надо ещё чуть-чуть. */
+#phone.v2 .cell.holding::after{
+  content:"";position:absolute;left:50%;top:50%;width:140%;aspect-ratio:1;
+  transform:translate(-50%,-50%) scale(0);border-radius:50%;
+  background:rgba(66,139,249,.45);z-index:1;
+  animation:holdCharge var(--hold-ms,320ms) linear forwards;
+}
+@keyframes holdCharge{ from{transform:translate(-50%,-50%) scale(0)}
+                       to  {transform:translate(-50%,-50%) scale(1)} }
+
+/* ─── B · ручка на пальце ───
+   Не инструмент, а индикатор: пока она висит на пальце, идёт массовый сбор. */
+#handy{
+  position:fixed;left:0;top:0;width:56px;height:56px;z-index:95;
+  pointer-events:none;opacity:0;
+  font-size:38px;line-height:56px;text-align:center;
+  /* Своя композиционная плашка: без неё сафари на каждом кадре
+     перерисовывает ручку вместе с сеткой, и жест начинает заедать.
+     drop-shadow под эмодзи тут был как раз тем, что это добивало —
+     фильтр пересчитывается на каждом сдвиге, поэтому его нет. */
+  transform:translate3d(0,0,0);
+  will-change:transform,opacity;
+  backface-visibility:hidden;
+  transition:opacity .18s ease;   /* transform — только на перелётах, из js */
+}
+#handy.on{opacity:1}
+
+/* пока ручка на пальце — кнопка на своём месте пустует.
+   Держим её габарит, чтобы ряд с пейджером не дёргался */
+#phone.v2 #collect.handoff{visibility:hidden}
+
+/* ─── C · режим дёрганья ───
+   Галочек и заливки выделения во второй версии нет: роль индикатора
+   играет само дёрганье, как на домашнем экране айфона. */
+#phone.v2[data-ver="select"] .cell.sel::before,
+#phone.v2[data-ver="select"] .cell.sel::after{content:none}
+
+/* В режиме дёрганья сетка занята сбором и панорамироваться не должна:
+   иначе первое же ведение пальцем уезжает в прокрутку блока. Листают
+   тут краями экрана и пейджером — они вне скроллера и продолжают работать.
+   .nopan — то же самое на время любого заметания, ставится из lockScroll. */
+#phone.v2.jiggle #scroller,
+#phone.v2 #scroller.nopan{touch-action:none;overscroll-behavior:contain}
+
+#phone.v2.jiggle .cell.ready{
+  animation:jiggle .28s linear var(--jd,0ms) infinite;
+  transform-origin:50% 50%;
+}
+@keyframes jiggle{
+  0%  { transform:rotate(-1.4deg) translate(-.4px,.3px) }
+  50% { transform:rotate(1.4deg)  translate(.4px,-.3px) }
+  100%{ transform:rotate(-1.4deg) translate(-.4px,.3px) }
+}
+/* растущие уходят на второй план: в режиме сбора они не участвуют */
+#phone.v2.jiggle .cell:not(.ready){opacity:.45;transition:opacity .2s}
+
+/* выщелкивание собранной ячейки */
+#phone.v2 .cell.pop{animation:popOut .28s cubic-bezier(.3,1.5,.5,1)}
+@keyframes popOut{
+  0%  {transform:scale(1)}
+  40% {transform:scale(1.18)}
+  100%{transform:scale(1)}
+}
+
+/* Панель режима сбора не должна появляться «в поток»: она сдвигала сетку
+   прямо под пальцем, и ячейка уезжала из-под касания в момент входа
+   в режим. В версии C место под неё держим всегда. */
+#phone.v2[data-ver="select"] #actionbar[hidden]{
+  display:flex;visibility:hidden;
+}
