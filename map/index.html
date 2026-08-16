@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Онбординг, вариант 1</title>
-<link rel="stylesheet" href="../shared/generator/generator.css?v=202608161705">
+<link rel="stylesheet" href="../shared/generator/generator.css?v=202608161709">
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
   html,body{margin:0;height:100%;background:#d8c08c;overflow:hidden;overscroll-behavior:none;
@@ -627,7 +627,7 @@
   </div>
 
 
-<script src="../shared/generator/generator.js?v=202608161705"></script>
+<script src="../shared/generator/generator.js?v=202608161709"></script>
 <script>
 'use strict';
 
@@ -1701,10 +1701,9 @@ function runDemo(kind){
   genDemo.classList.add('on');
   const hand = genDemo.querySelector('.hand');
 
-  // для сбора подводим руку слева от первой грядки: раньше старт совпадал
-  // с ней самой, и рука дёргалась на месте вместо подхода
-  const first0 = centerOf(targets[0]);
-  const start = kind === 'seed' ? centerOf(src) : { x: first0.x - 74, y: first0.y };
+  // сбор начинается прямо на первой готовой грядке: подход сбоку и прыжок
+  // дугой читались как лишние движения — палец просто ложится и ведёт
+  const start = kind === 'seed' ? centerOf(src) : centerOf(targets[0]);
   const above = { x: start.x, y: start.y - 90 };
 
   hand.style.left = above.x + 'px';
@@ -1747,13 +1746,20 @@ function runDemo(kind){
           });
       };
 
-      // подводим руку к первой грядке дугой, дальше ведём без остановок
-      handTo(hand, start, first, 420, 70, () => {
-        if(!alive()) return;
-        tapCell(marks[0].el, kind === 'seed' ? icon : null);
+      if(kind === 'seed'){
+        // ресурс поднят из лотка — переносим его дугой к первой грядке
+        handTo(hand, start, first, 420, 70, () => {
+          if(!alive()) return;
+          tapCell(marks[0].el, icon);
+          marks[0].hit = true;
+          later(sweep, 80);
+        });
+      } else {
+        // сбор: палец уже на первой грядке, сразу ведём
+        tapCell(marks[0].el, null);
         marks[0].hit = true;
-        later(sweep, 80);
-      });
+        later(sweep, 120);
+      }
     }, 260);
   }), 420);
 }
