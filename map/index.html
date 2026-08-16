@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Онбординг, вариант 1</title>
-<link rel="stylesheet" href="../shared/generator/generator.css?v=202608161655">
+<link rel="stylesheet" href="../shared/generator/generator.css?v=202608161702">
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
   html,body{margin:0;height:100%;background:#d8c08c;overflow:hidden;overscroll-behavior:none;
@@ -282,12 +282,9 @@
     transform:translate(-50%,-50%);animation:demoDrop .5s ease-out forwards}
   @keyframes demoDrop{0%{opacity:.95;transform:translate(-50%,-70%) scale(1.05)}
                       100%{opacity:0;transform:translate(-50%,-50%) scale(.8)}}
-    8%{opacity:1;transform:scale(1)}
-    88%{offset-distance:100%;opacity:1;transform:scale(1)}
-    100%{offset-distance:100%;opacity:0;transform:scale(.75)}}
 
   /* транслейт по X нужен всегда, поэтому появление играем масштабом внутри */
-  #boostTip{position:fixed;z-index:71;transform:translate(-50%,0);
+  #boostTip{position:fixed;z-index:71;transform:translate(-50%,0);width:max-content;max-width:230px;
     visibility:hidden;opacity:0;transition:opacity .2s ease, visibility 0s linear .2s}
   #boostTip.on{visibility:visible;opacity:1;transition:opacity .2s ease, visibility 0s}
   #boostTip.on .box{animation:tippop .34s var(--ease) both}
@@ -630,7 +627,7 @@
   </div>
 
 
-<script src="../shared/generator/generator.js?v=202608161655"></script>
+<script src="../shared/generator/generator.js?v=202608161702"></script>
 <script>
 'use strict';
 
@@ -1174,6 +1171,7 @@ const openGenerator = () => openBuilding('generator');
 
 /* закрываем всё, что живёт поверх экрана здания, одним местом */
 function closeGenerator(){
+  stopDemo();                     // показ жеста не должен пережить закрытие
   screen.classList.remove('on');
   ordersBox.classList.remove('on');
   clearInterval(boostTimer);
@@ -1757,10 +1755,14 @@ screen.addEventListener('pointerdown', e => {
 });
 
 function showBoostTip(){
+  // экран закрыт — у ячеек нулевые координаты, и тултип уезжал
+  // в левый верхний угол, растягиваясь на всю ширину
+  if(!screen.classList.contains('on')) return;
   const cells = [...document.querySelectorAll(genHost + ' .cell')];
   const mid = cells[Math.floor(cells.length/2)];
   if(!mid) return;
   const r = mid.getBoundingClientRect();
+  if(!r.width){ later(showBoostTip, 120); return; }
   boostTip.style.left = (r.left + r.width/2) + 'px';
   boostTip.style.top  = (r.bottom + 14) + 'px';
   boostTip.classList.add('on');
